@@ -1,0 +1,15 @@
+#taskGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr; /* Adjust the number of columns as needed */
+    gap: 10px;
+}
+
+.task-row {
+    display: contents;
+}
+
+.task-cell {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: left;
+}
