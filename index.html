@@ -7,6 +7,13 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Login Form -->
+    <form id="loginForm">
+        <input type="email" id="userEmail" placeholder="Email" required>
+        <input type="password" id="userPassword" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+
     <!-- Task Input Area -->
     <div id="taskInputArea">
         <h2>Add New Task</h2>
@@ -45,36 +52,7 @@
         </div>
     </div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js"></script>
-
-    <!-- Firebase Initialization -->
-    <script>
-        const firebaseConfig = {
-          apiKey: "AIzaSyDO7P-rfyfPgPgo5nBFRwEVfalfat_Z3Tw",
-          authDomain: "tasklist-dcef5.firebaseapp.com",
-          projectId: "tasklist-dcef5",
-          storageBucket: "tasklist-dcef5.appspot.com",
-          messagingSenderId: "616434766010",
-          appId: "1:616434766010:web:3419cdf514ff1f0f867283",
-          measurementId: "G-4J9S5620ML"
-        };
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-
-    // Initialize Firestore
-    const db = firebase.firestore();
-
-    // Initialize Firebase Analytics
-    if (firebaseConfig.measurementId) { // Check if measurementId is available
-    firebase.analytics();
-        }
-    </script>
-    
     <!-- My main JavaScript file -->
-    <script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
