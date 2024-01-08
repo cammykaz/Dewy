@@ -1,6 +1,6 @@
 #taskGrid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr) 20px; /* Adjust the number of columns based on your needs, the last one is for the delete button */
+    grid-template-columns: repeat(4, 1fr) 20px; /* Adjust the number of columns based on your needs, the last one is for the delete button */
     gap: 10px;
 }
 

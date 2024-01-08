@@ -49,6 +49,7 @@ function createTaskObject(name, impact, time) {
         name: name,
         impact: impact,
         time: time,
+        priority: calculatePriority(impact, time),
         createdAt: new Date()
     };
 }
@@ -61,6 +62,8 @@ function addToTableView(task) {
     taskRow.appendChild(createCell(task.name));
     taskRow.appendChild(createCell(task.impact));
     taskRow.appendChild(createCell(task.time));
+    taskRow.appendChild(createCell(task.priority));
+    // Calculate task Priority
     //Create delete button for task
     const deleteBtn = createDeleteButton(task);
     taskRow.appendChild(deleteBtn);
@@ -118,6 +121,29 @@ function clearTasks() {
     document.getElementById('taskGrid').innerHTML = '';
     tempTasks = [];
     console.log("Tasks cleared from UI and tempTasks array");
+}
+function calculatePriority (impact, time) {
+    const priorityMapping = {
+        'Monumental, 10 Minutes': 'A',
+        'Monumental, 30 Minutes': 'B',
+        'Substantial, 10 Minutes': 'C',
+        'Substantial, 30 Minutes': 'D',
+        'Monumental, 1 Hour': 'E',
+        'Monumental, 2 Hours': 'F',
+        'Substantial, 1 Hour': 'G',
+        'Substantial, 2 Hours': 'H',
+        'Medium, 10 Minutes': 'I',
+        'Medium, 30 Minutes': 'J',
+        'Minimal, 10 Minutes': 'K',
+        'Minimal, 30 Minutes': 'L',
+        'Medium, 1 Hour': 'M',
+        'Medium, 2 Hours': 'N',
+        'Minimal, 1 Hour': 'O',
+        'Minimal, 2 Hours': 'P'
+    }
+    console.log("priority:", priorityMapping[`${impact}, ${time}`]);
+   
+    return priorityMapping[`${impact}, ${time}`];   
 }
 
 
@@ -189,12 +215,15 @@ document.addEventListener('DOMContentLoaded', () => {
     taskForm.addEventListener('submit', function (event) {
         event.preventDefault();
 
+        console.log("task submitted");
+
         const taskName = document.getElementById('taskName').value;
         const taskImpact = document.getElementById('taskImpact').value;
         const taskTime = document.getElementById('taskTime').value;
         // Capture other fields similarly
 
         // Create task object
+        console.log("create task object");
         const task = createTaskObject(taskName, taskImpact, taskTime);
         console.log("Task object created:", task);
 
