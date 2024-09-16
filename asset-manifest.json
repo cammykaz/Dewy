@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/dewy/static/css/main.da45b62e.css",
-    "main.js": "/dewy/static/js/main.ce3063f1.js",
-    "static/js/592.2a317f45.chunk.js": "/dewy/static/js/592.2a317f45.chunk.js",
-    "index.html": "/dewy/index.html",
-    "main.da45b62e.css.map": "/dewy/static/css/main.da45b62e.css.map",
-    "main.ce3063f1.js.map": "/dewy/static/js/main.ce3063f1.js.map",
-    "592.2a317f45.chunk.js.map": "/dewy/static/js/592.2a317f45.chunk.js.map"
+    "main.css": "/Dewy/static/css/main.da45b62e.css",
+    "main.js": "/Dewy/static/js/main.906435c4.js",
+    "static/js/592.2a317f45.chunk.js": "/Dewy/static/js/592.2a317f45.chunk.js",
+    "index.html": "/Dewy/index.html",
+    "main.da45b62e.css.map": "/Dewy/static/css/main.da45b62e.css.map",
+    "main.906435c4.js.map": "/Dewy/static/js/main.906435c4.js.map",
+    "592.2a317f45.chunk.js.map": "/Dewy/static/js/592.2a317f45.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.da45b62e.css",
-    "static/js/main.ce3063f1.js"
+    "static/js/main.906435c4.js"
   ]
 }
