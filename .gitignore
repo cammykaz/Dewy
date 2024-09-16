@@ -1,5 +1,29 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
 # macOS system files
 .DS_Store
 
 # Visual Studio Code - Workspace settings
 .vscode/
+
+# admin scripts
+/admin-scripts
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# environment variables
+.env*
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

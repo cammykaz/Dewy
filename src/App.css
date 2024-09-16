@@ -1,0 +1,16 @@
+/* App.css */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 10px;
+  background-color: #ffffff;
+}
+
+.app {
+  margin: auto;
+  width: 100%;
+}
+
+h1 {
+  color: #333;
+}

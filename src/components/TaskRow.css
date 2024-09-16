@@ -1,0 +1,17 @@
+/* TaskRow.css */
+.task-row {
+    display: contents;
+  }
+  
+  .task-cell {
+    border: 1px solid #ccc;
+    padding: 8px;
+  }
+  
+  .delete-btn {
+    border: 1px solid #ccc; /* Match the style of other cells */
+    display: flex;
+    align-items: center; /* Center the icon or text vertically */
+    justify-content: center; /* Center the icon or text horizontally */
+    cursor: pointer;
+  }
