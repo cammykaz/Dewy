@@ -7,7 +7,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { db } from '../firebaseConfig'; // Adjust the import path as necessary
-import { collection, addDoc, deleteDoc, getDocs, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc } from 'firebase/firestore';
 
 // Create a new Context object. This will be used to provide and consume the tasks state throughout your app.
 const TasksContext = createContext();
@@ -23,7 +23,37 @@ export const TasksProvider = ({ children, userId }) => {
     const [tasks, setTasks] = useState([]);
     const [syncing, setSyncing] = useState(false);
 
-    // Utility Functions
+    /**
+     * Utility Functions
+     * ------------------
+     * These functions help handle task syncing, fetching, and state management.
+     */
+
+    // Priority Calculation Function
+    const calculatePriority = (impact, time) => {
+        const priorityMapping = {
+            'Monumental, 10 Minutes': 'A',
+            'Monumental, 30 Minutes': 'B',
+            'Substantial, 10 Minutes': 'C',
+            'Substantial, 30 Minutes': 'D',
+            'Monumental, 1 Hour': 'E',
+            'Monumental, 2 Hours': 'F',
+            'Substantial, 1 Hour': 'G',
+            'Substantial, 2 Hours': 'H',
+            'Medium, 10 Minutes': 'I',
+            'Medium, 30 Minutes': 'J',
+            'Minimal, 10 Minutes': 'K',
+            'Minimal, 30 Minutes': 'L',
+            'Medium, 1 Hour': 'M',
+            'Medium, 2 Hours': 'N',
+            'Minimal, 1 Hour': 'O',
+            'Minimal, 2 Hours': 'P'
+        };
+        const priority = priorityMapping[`${impact}, ${time}`]; // Default if no match
+
+        console.log(`Calculating priority for impact: ${impact}, time: ${time}, result: ${priority}`);
+        return priority;
+    };
 
     const syncTaskWithFirestore = useCallback(async (task) => {
         console.log("Syncing task with Firestore (syncTaskWithFirestone):", task);
@@ -37,7 +67,7 @@ export const TasksProvider = ({ children, userId }) => {
             console.log("Adding task to Firestore");
             const docRef = await addDoc(tasksRef, taskForFirestore);
             console.log("Task successfully added to Firestore with ID:", docRef.id);
-    
+
             // Update the task in local state with the Firestore-generated ID
             const syncedTask = { ...task, id: docRef.id };
             setTasks(currentTasks =>
@@ -49,7 +79,7 @@ export const TasksProvider = ({ children, userId }) => {
             return null;
         }
     }, [userId, setTasks]);
-    
+
 
     const syncPreLoginTasks = useCallback(async () => {
         console.log("Starting syncing of pre-login tasks");
@@ -112,7 +142,11 @@ export const TasksProvider = ({ children, userId }) => {
     }, [userId, syncPreLoginTasks, clearTasks, fetchTasks]); // Triggered when userId changes, i.e., on login
 
 
-    // Effect Hooks:
+    /**
+     * React Effect Hooks
+     * ------------------
+     * These run when certain variables change (like userId) or when tasks state updates.
+     */
 
     useEffect(() => {
         if (userId) {
@@ -131,17 +165,30 @@ export const TasksProvider = ({ children, userId }) => {
         });
     }, [tasks]); // This effect runs whenever `tasks` changes.
 
-    
-    // Task Management Functions:
-    
+
+    /**
+     * Task Management Functions
+     * -------------------------
+     * These functions are exposed to other components to handle task addition and deletion.
+     */
+
     // Function to add a new task to the tasks array. This will be available to any component consuming the TasksContext.
     const addTask = async (newTask) => {
         console.log("Adding task to local state. addTask called with newTask:", newTask);
 
+        // Calculate the priority before saving
+        const priority = calculatePriority(newTask.impact, newTask.time);  // Call the function here
+
+        // Add the priority to the task object
+        const taskWithPriority = { ...newTask, priority };  // Create the task with the calculated priority
+
+        // Log the taskWithPriority to check if priority is added
+        console.log("Task with priority:", taskWithPriority);
+
         // Add task to local state with a temporary ID
         // Update the local state, basically 'current state = current state + new task' 
-        setTasks(currentTasks => [...currentTasks, newTask]);
-    
+        setTasks(currentTasks => [...currentTasks, taskWithPriority]);
+
         // If the user is logged in, sync the task with Firestore
         if (userId) {
             console.log("User found, syncing new task. Logged in with userId:", userId);
@@ -153,7 +200,31 @@ export const TasksProvider = ({ children, userId }) => {
             }
         }
     };
-    
+
+    // Update Task Function
+    const updateTask = async (taskId, updatedFields) => {
+        // First, find the task that needs to be updated
+        const updatedTasks = tasks.map(task => {
+            if (task.id === taskId) {
+                // Recalculate the priority if impact or time is updated
+                const updatedImpact = updatedFields.impact || task.impact;
+                const updatedTime = updatedFields.time || task.time;
+                const updatedPriority = calculatePriority(updatedImpact, updatedTime);
+
+                // Return the updated task with recalculated priority
+                return { ...task, ...updatedFields, priority: updatedPriority };
+            }
+            return task;
+        });
+        // Update local state
+        setTasks(updatedTasks);
+
+        // Sync with Firestore
+        if (userId) {
+            const taskRef = doc(db, "users", userId, "tasks", taskId);
+            await updateDoc(taskRef, updatedFields);  // Sync only the changed fields
+        }
+    };
 
     // Delete Task Function
     const deleteTask = async (taskId) => {
