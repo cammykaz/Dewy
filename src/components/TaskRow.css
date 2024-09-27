@@ -6,6 +6,8 @@
   .task-cell {
     border: 1px solid #ccc;
     padding: 8px;
+    display: flex;
+    align-items: center;
   }
   
   .delete-btn {
@@ -15,3 +17,16 @@
     justify-content: center; /* Center the icon or text horizontally */
     cursor: pointer;
   }
+
+/* Style the select dropdowns */
+.task-cell select {
+  width: 100%;          /* Make it fill the cell */
+  height: 100%;         /* Ensure it fills the cell's height */
+  padding: 8px;         /* Match the padding of other cells */
+  background-color: white; /* Same background as other input fields */
+  border: none;   /* Same border as the cells */
+  box-sizing: border-box;   /* Include padding and border in the element's total width and height */
+  font-size: 16px;      /* Adjust font size if necessary */
+  box-sizing: border-box; /* Ensure padding doesn't break the layout */
+  appearance: auto;         /* Keep the default browser arrow */
+}

@@ -49,7 +49,7 @@ export const TasksProvider = ({ children, userId }) => {
             'Minimal, 1 Hour': 'O',
             'Minimal, 2 Hours': 'P'
         };
-        const priority = priorityMapping[`${impact}, ${time}`]; // Default if no match
+        const priority = priorityMapping[`${impact}, ${time}`] || 'N/A'; // Default if no match
 
         console.log(`Calculating priority for impact: ${impact}, time: ${time}, result: ${priority}`);
         return priority;
@@ -192,7 +192,7 @@ export const TasksProvider = ({ children, userId }) => {
         // If the user is logged in, sync the task with Firestore
         if (userId) {
             console.log("User found, syncing new task. Logged in with userId:", userId);
-            const syncedTask = await syncTaskWithFirestore(newTask);
+            const syncedTask = await syncTaskWithFirestore(taskWithPriority);  // Sync task with priority
             if (syncedTask) {
                 console.log("New task synced to Firestore with ID:", syncedTask.id);
             } else {
@@ -203,28 +203,32 @@ export const TasksProvider = ({ children, userId }) => {
 
     // Update Task Function
     const updateTask = async (taskId, updatedFields) => {
-        // First, find the task that needs to be updated
+        // Find the task that needs to be updated
         const updatedTasks = tasks.map(task => {
             if (task.id === taskId) {
-                // Recalculate the priority if impact or time is updated
+                // Recalculate priority if impact or time is updated
                 const updatedImpact = updatedFields.impact || task.impact;
                 const updatedTime = updatedFields.time || task.time;
                 const updatedPriority = calculatePriority(updatedImpact, updatedTime);
 
-                // Return the updated task with recalculated priority
+                // Return updated task with recalculated priority
                 return { ...task, ...updatedFields, priority: updatedPriority };
             }
-            return task;
+            return task; // No change for other tasks
         });
-        // Update local state
+
+        // Update the local state with the new list of tasks
         setTasks(updatedTasks);
 
-        // Sync with Firestore
+        // Sync the updated task with Firestore if logged in
         if (userId) {
             const taskRef = doc(db, "users", userId, "tasks", taskId);
-            await updateDoc(taskRef, updatedFields);  // Sync only the changed fields
+            const updatedTask = updatedTasks.find(task => task.id === taskId); // Find the updated task
+            await updateDoc(taskRef, updatedTask);  // Sync all updated fields
+            console.log("Task synced with Firestore:", updatedTask);
         }
     };
+
 
     // Delete Task Function
     const deleteTask = async (taskId) => {
@@ -248,7 +252,7 @@ export const TasksProvider = ({ children, userId }) => {
 
     // The value prop of the provider component provides the tasks state and updater functions to any consuming components.
     return (
-        <TasksContext.Provider value={{ tasks, addTask, deleteTask, clearTasks }}>
+        <TasksContext.Provider value={{ tasks, addTask, deleteTask, clearTasks, updateTask }}>
             {children} {/* This represents any child components that will have access to the tasks context. */}
         </TasksContext.Provider>
     );

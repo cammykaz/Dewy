@@ -15,7 +15,7 @@ import { useTasks } from '../context/TasksContext'; // Adjust the import path as
 //React component function 'TaskManager'
 function TaskManager({ currentUser }) {
   // // Access tasks and task management functions from the tasks context, via the useTasks hook
-  const { tasks, addTask, deleteTask } = useTasks();
+  const { tasks, addTask, deleteTask, updateTask } = useTasks();
 
   return (
     <div>
@@ -25,7 +25,11 @@ function TaskManager({ currentUser }) {
 
       {/* Section for displaying the list of tasks */}
       <h2>Task List</h2>
-      <TableView tasks={tasks} onDelete={deleteTask} />
+      <TableView
+        tasks={tasks}
+        onDelete={deleteTask}
+        onUpdate={updateTask}
+      />
 
       {/* Placeholder for future Matrix View section */}
       <h2>Matrix View</h2>
