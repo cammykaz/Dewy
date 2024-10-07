@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/Dewy/static/css/main.da45b62e.css",
-    "main.js": "/Dewy/static/js/main.906435c4.js",
+    "main.css": "/Dewy/static/css/main.67f9d015.css",
+    "main.js": "/Dewy/static/js/main.734e2a9b.js",
     "static/js/592.2a317f45.chunk.js": "/Dewy/static/js/592.2a317f45.chunk.js",
     "index.html": "/Dewy/index.html",
-    "main.da45b62e.css.map": "/Dewy/static/css/main.da45b62e.css.map",
-    "main.906435c4.js.map": "/Dewy/static/js/main.906435c4.js.map",
+    "main.67f9d015.css.map": "/Dewy/static/css/main.67f9d015.css.map",
+    "main.734e2a9b.js.map": "/Dewy/static/js/main.734e2a9b.js.map",
     "592.2a317f45.chunk.js.map": "/Dewy/static/js/592.2a317f45.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.da45b62e.css",
-    "static/js/main.906435c4.js"
+    "static/css/main.67f9d015.css",
+    "static/js/main.734e2a9b.js"
   ]
 }
