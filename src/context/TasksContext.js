@@ -229,6 +229,28 @@ export const TasksProvider = ({ children, userId }) => {
         }
     };
 
+    // Task Done Function
+    const toggleTaskDone = async (taskId, isDone) => {
+        // Find and update the 'isDone' field for the task with taskId
+        const updatedTasks = tasks.map(task => {
+            if (task.id === taskId) {
+                return { ...task, isDone };
+            }
+            return task;
+        });
+    
+        // Update the local state with the new list of tasks
+        setTasks(updatedTasks);
+    
+        // Sync the updated task with Firestore if logged in
+        if (userId) {
+            const taskRef = doc(db, "users", userId, "tasks", taskId);
+            const updatedTask = updatedTasks.find(task => task.id === taskId); // Find the updated task
+            await updateDoc(taskRef, updatedTask);  // Sync all updated fields
+            console.log("Task marked as done and synced with Firestore:", updatedTask);
+        }
+    };
+    
 
     // Delete Task Function
     const deleteTask = async (taskId) => {
@@ -252,7 +274,7 @@ export const TasksProvider = ({ children, userId }) => {
 
     // The value prop of the provider component provides the tasks state and updater functions to any consuming components.
     return (
-        <TasksContext.Provider value={{ tasks, addTask, deleteTask, clearTasks, updateTask }}>
+        <TasksContext.Provider value={{ tasks, addTask, deleteTask, clearTasks, updateTask, toggleTaskDone }}>
             {children} {/* This represents any child components that will have access to the tasks context. */}
         </TasksContext.Provider>
     );

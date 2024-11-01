@@ -1,32 +1,93 @@
 /* TaskRow.css */
+
+/* Flexbox container for each task row */
 .task-row {
-    display: contents;
-  }
-  
-  .task-cell {
-    border: 1px solid #ccc;
-    padding: 8px;
-    display: flex;
-    align-items: center;
-  }
-  
-  .delete-btn {
-    border: 1px solid #ccc; /* Match the style of other cells */
-    display: flex;
-    align-items: center; /* Center the icon or text vertically */
-    justify-content: center; /* Center the icon or text horizontally */
-    cursor: pointer;
-  }
+  display: flex;
+  gap: 8px; /* Controls the space between each cell */
+  align-items: stretch; /* Vertically center all items in the row */
+  position: relative; /* Allows for positioning the strike-through line */
+  padding: 0;
+  margin: 0;
+ }
+
+.task-row:first-child {
+  padding-top: 0; /* Remove top padding for the first row */
+}
+
+/* Apply the strike-through line when the task is done */
+.task-row.done::after {
+  content: '';
+  position: absolute;
+  top: 50%; /* Center the line vertically within the row */
+  left: 0; /* Start at the left edge */
+  right: 0; /* Span across the entire row */
+  height: 2px;
+  background-color: black;
+  z-index: 1;
+}
+
+/* Styling for individual task elements */
+
+/* checkbox */
+.checkbox-cell { /* Controls the layout and positioning of the container that holds the checkbox. */
+  flex: 0 0 64px; /* Fixed width, no grow or shrink */
+  display: flex;
+  align-items: center; /* Center vertically */
+  justify-content: center; /* Center horizontally */
+}
+
+.checkbox-cell input[type="checkbox"] {
+  width: 100%;
+  height: 100%;
+}
+
+/* Base class for all task cells (name, impact, time) */
+.task-cell {
+  padding: 0 8px;
+  display: flex;
+  align-items: center; /* Vertically center content */
+  border: 1px solid #ccc;
+  min-height: 50px; /* Ensures a consistent row height */
+}
+
+/* task name */
+.name-cell {
+  flex: 2 0 25%; /* High grow factor, lower shrink */
+  min-width: 150px; /* Minimum size to prevent it from becoming too small */
+}
+
+/* Prevent the impact and time cells from shrinking too small */
+.impact-cell, .time-cell {
+  flex: 1 1 100px; /* Standard grow and shrink, with a reasonable starting width */
+  min-width: 80px; /* Minimum width to ensure readability */
+}
 
 /* Style the select dropdowns */
 .task-cell select {
-  width: 100%;          /* Make it fill the cell */
-  height: 100%;         /* Ensure it fills the cell's height */
-  padding: 8px;         /* Match the padding of other cells */
-  background-color: white; /* Same background as other input fields */
-  border: none;   /* Same border as the cells */
-  box-sizing: border-box;   /* Include padding and border in the element's total width and height */
-  font-size: 16px;      /* Adjust font size if necessary */
-  box-sizing: border-box; /* Ensure padding doesn't break the layout */
-  appearance: auto;         /* Keep the default browser arrow */
+  width: 100%;
+  height: 100%;
+  border: none;
+  background-color: white;
+  font-size: 16px; 
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+/* Flex item: priority cell */
+.priority-cell {
+  flex: 0 1 50px; 
+  justify-content: center; /* Horizontally center text */
+  display: flex;
+  min-width: 30px; /* Prevent it from shrinking too small */
+  max-width: 100px; /* Cap the width at 100px for larger viewports */
+}
+
+/* Flex item: delete button */
+.delete-btn {
+  flex: 0 0 40px; 
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }

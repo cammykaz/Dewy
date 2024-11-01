@@ -1,6 +1,9 @@
 /* TableView.css */
-.taskGrid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr) 40px;
-    gap: 10px;
-  }
+
+/* Controls the layout of your table's grid */
+
+.task-list {
+  display: flex;
+  flex-direction: column; /* Stack tasks vertically */
+  gap: 8px; /* Spacing between rows */
+}
