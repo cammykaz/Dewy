@@ -27,7 +27,6 @@ function TaskSubmission() {
       name: taskName,
       impact: taskImpact,
       time: taskTime,
-      //priority: 'To be calculated', // Placeholder, adjust this according to your priority calculation logic
       createdAt: new Date()
     };
     console.log("New task object created:", newTask);

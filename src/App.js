@@ -8,6 +8,7 @@ import LoginForm from './components/LoginForm';
 import TaskManager from './components/TaskManager';
 import { TasksProvider } from './context/TasksContext'
 import LogoutButton from './components/LogoutButton';
+import TaskListManager from './components/TaskListManager';
 
 
 function App() {
@@ -18,16 +19,17 @@ function App() {
     <TasksProvider userId={currentUser?.uid}>
       <div className="app">
         {/* Conditional rendering based on currentUser presence */}
-        {/* If there is NOT a current user then render... */}
-        {!currentUser ? (
-          <LoginForm />
-          // If there IS a current user then render
-        ) : (
+        {/* Render the LoginForm if no user is logged in */}
+        {!currentUser && <LoginForm />}
+        {/* Render the TaskListManager and LogoutButton if a user IS logged in */}
+        {currentUser && (
           <>
             <p>Yo! {currentUser.email}</p>
             <LogoutButton />
+            <TaskListManager />
           </>
         )}
+        {/* Always render the TaskManager */}
         <TaskManager />
       </div>
     </TasksProvider >

@@ -11,11 +11,14 @@ function TaskRow({ id, name, impact, time, priority, onDelete, onFieldUpdate, is
     onFieldUpdate(id, { [fieldName]: updatedValue });
   };
 
+  // Ensure isDone is always a boolean, never undefined
+  const isTaskDone = isDone === true;
+
   return (
-    <div className={`task-row ${isDone ? 'done' : ''}`}>
+    <div className={`task-row ${isTaskDone ? 'done' : ''}`}>
       {/* Task Done */}
       <div className="checkbox-cell">
-        <input type="checkbox" checked={isDone} onChange={(e) => onToggleDone(id, e.target.checked)} />
+        <input type="checkbox" checked={isTaskDone} onChange={(e) => onToggleDone(id, e.target.checked)} />
       </div>
       {/* Task Name */}
       <div className="task-cell name-cell">{name}</div>
