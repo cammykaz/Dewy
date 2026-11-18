@@ -75,6 +75,30 @@ export const TasksProvider = ({ children, userId }) => {
             .catch(error => console.error("Error updating task list activity:", error));
     }, [userId]);
 
+    // Merge fields into a task list: local state immediately, then a partial Firestore write
+    const saveTaskListFields = useCallback((taskListId, fields) => {
+        setTaskLists(currentLists =>
+            currentLists.map(list => list.id === taskListId ? { ...list, ...fields } : list)
+        );
+        if (!userId) return;
+        updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), fields)
+            .catch(error => console.error("Error saving task list fields:", fields, error));
+    }, [userId]);
+
+    // Home desk arrangement. Neither of these is planning activity, so lastActivityAt is left alone.
+
+    // Where a journal sits on the desk: { x, y } are 0–1 fractions of the desk's free space and
+    // z is its stacking order. Called once when a drag ends.
+    const updateTaskListPosition = useCallback((taskListId, deskPosition) => {
+        saveTaskListFields(taskListId, { deskPosition });
+    }, [saveTaskListFields]);
+
+    // Put a journal away in the library (false) or place it back on the desk (true).
+    // Its tasks and saved deskPosition are untouched.
+    const setTaskListOnDesk = useCallback((taskListId, onDesk) => {
+        saveTaskListFields(taskListId, { onDesk });
+    }, [saveTaskListFields]);
+
     const syncTaskWithFirestore = useCallback(async (task) => {
         console.log("🔄 Syncing task:", task);
 
@@ -443,7 +467,9 @@ export const TasksProvider = ({ children, userId }) => {
             setTaskLists,
             activeTaskListId,
             setActiveTaskListId,
-            createTaskList
+            createTaskList,
+            updateTaskListPosition,
+            setTaskListOnDesk
         }}>
             {children} {/* This represents any child components that will have access to the tasks context. */}
         </TasksContext.Provider>

@@ -220,6 +220,40 @@ describe('task list activity (lastActivityAt)', () => {
     expect(listActivityWrites('users/u1/taskLists/list2')).toHaveLength(0);
   });
 
+  test('moving a journal saves its desk position without recording activity', async () => {
+    await renderLoggedIn();
+    act(() => {
+      ctx.updateTaskListPosition('list2', { x: 0.25, y: 0.5, z: 2 });
+    });
+    expect(list('list2').deskPosition).toEqual({ x: 0.25, y: 0.5, z: 2 });
+    expect(list('list2').lastActivityAt).toBeUndefined();
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledWith(
+      { path: 'users/u1/taskLists/list2' },
+      { deskPosition: { x: 0.25, y: 0.5, z: 2 } }
+    );
+  });
+
+  test('putting a journal away and back persists onDesk only, keeping tasks, position, and activity', async () => {
+    await renderLoggedIn();
+    act(() => {
+      ctx.updateTaskListPosition('list1', { x: 0.3, y: 0.6, z: 4 });
+    });
+    updateDoc.mockClear();
+
+    act(() => { ctx.setTaskListOnDesk('list1', false); });
+    expect(list('list1')).toMatchObject({ onDesk: false, deskPosition: { x: 0.3, y: 0.6, z: 4 } });
+    expect(list('list1').lastActivityAt).toBeUndefined();
+    expect(updateDoc).toHaveBeenLastCalledWith({ path: LIST_PATH }, { onDesk: false });
+    expect(ctx.tasks).toHaveLength(1); // the list's tasks are untouched
+    expect(deleteDoc).not.toHaveBeenCalled();
+
+    act(() => { ctx.setTaskListOnDesk('list1', true); });
+    expect(list('list1')).toMatchObject({ onDesk: true, deskPosition: { x: 0.3, y: 0.6, z: 4 } });
+    expect(updateDoc).toHaveBeenLastCalledWith({ path: LIST_PATH }, { onDesk: true });
+    expect(updateDoc).toHaveBeenCalledTimes(2);
+  });
+
   test('guests do not write activity to Firestore', () => {
     render(app(undefined));
     addGuestTask('Guest task');

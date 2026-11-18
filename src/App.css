@@ -17,3 +17,32 @@ body {
 h1 {
   color: #333;
 }
+
+/* Desk header: greeting and logout */
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Return from an opened journal to the desk */
+.back-to-desk {
+  padding: 6px 12px;
+  border: 1px solid #d6cfc2;
+  border-radius: 999px;
+  background-color: #faf7f1;
+  color: #4a4238;
+  font: inherit;
+  cursor: pointer;
+}
+
+.back-to-desk:hover {
+  background-color: #f2ede4;
+}
+
+.back-to-desk:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 2px;
+}

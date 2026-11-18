@@ -1,0 +1,471 @@
+/* Desk.css */
+
+/* Home surface: a minimalist desk with journals resting on it, plus the Journal Library drawer */
+
+.desk-view {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-block: 8px 32px;
+}
+
+.desk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 14px;
+  min-height: 36px;
+}
+
+/* Quiet pill buttons used on the desk and in the library */
+.desk-action,
+.library-item-actions button {
+  padding: 8px 14px;
+  border: 1px solid #d6cfc2;
+  border-radius: 999px;
+  background-color: #faf7f1;
+  color: #4a4238;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.desk-action:hover,
+.library-item-actions button:hover {
+  background-color: #f2ede4;
+}
+
+/* The desk: finite, softly lit, uncluttered */
+.desk {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 18px;
+  background-color: #ebe5da;
+  background-image: radial-gradient(ellipse at 30% 15%, rgba(255, 255, 255, 0.5), transparent 65%);
+  box-shadow:
+    inset 0 0 0 1px rgba(70, 55, 35, 0.07),
+    0 1px 2px rgba(40, 30, 20, 0.05);
+}
+
+.desk-empty {
+  margin: 0;
+  padding: 48px 24px;
+  color: #7a7064;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 16px;
+  text-align: center;
+}
+
+/* Journal: positioned wrapper (keep width/height in sync with JOURNAL_WIDTH/JOURNAL_HEIGHT in Journal.js) */
+.journal {
+  position: absolute;
+  width: 132px;
+  height: 176px;
+  transform: rotate(var(--rotation));
+  transition: transform 0.2s ease;
+}
+
+.journal.is-dragging {
+  transform: rotate(var(--rotation)) scale(1.03);
+}
+
+/* The cover itself: the button that opens and drags the journal */
+.journal-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 3px 9px 9px 3px;
+  background-color: var(--cover);
+  cursor: grab;
+  touch-action: none; /* let pointer events drag instead of scrolling */
+  user-select: none;
+  -webkit-user-select: none;
+  font: inherit;
+  box-shadow:
+    0 1px 1px rgba(30, 22, 14, 0.1),
+    0 6px 14px rgba(30, 22, 14, 0.14),
+    0 18px 28px -14px rgba(30, 22, 14, 0.3);
+  transition: box-shadow 0.2s ease;
+}
+
+/* Binding along the spine */
+.journal-cover::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 13px;
+  border-radius: 3px 0 0 3px;
+  background-color: rgba(0, 0, 0, 0.16);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Hint of page edges */
+.journal-cover::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  right: -3px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background-color: #f4efe5;
+  box-shadow: 0 1px 2px rgba(30, 22, 14, 0.15);
+}
+
+.journal-cover:hover {
+  box-shadow:
+    0 1px 1px rgba(30, 22, 14, 0.1),
+    0 10px 20px rgba(30, 22, 14, 0.16),
+    0 24px 34px -14px rgba(30, 22, 14, 0.32);
+}
+
+.journal.is-dragging .journal-cover {
+  cursor: grabbing;
+  box-shadow:
+    0 2px 2px rgba(30, 22, 14, 0.1),
+    0 16px 30px rgba(30, 22, 14, 0.2),
+    0 32px 44px -16px rgba(30, 22, 14, 0.35);
+}
+
+.journal-cover:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 4px;
+}
+
+/* Name plate on the cover. The plate provides the padding; the title inside does the clamping,
+   so a cut-off line can never show through the plate's padding. */
+.journal-label {
+  position: absolute;
+  top: 30px;
+  left: 25px;
+  right: 12px;
+  padding: 10px 8px;
+  border-radius: 2px;
+  background-color: rgba(250, 246, 238, 0.93);
+  color: #3a332b;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.journal-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; /* up to three lines, then an ellipsis */
+  overflow: hidden;
+  overflow-wrap: break-word; /* break inside a word only if it can't fit on its own line */
+  hyphens: auto;
+}
+
+/* Small action menu on each journal */
+.journal-menu-area {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+.journal-menu-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: rgba(250, 246, 238, 0.85);
+  color: #4a4238;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.journal:hover .journal-menu-button,
+.journal:focus-within .journal-menu-button,
+.journal-menu-button[aria-expanded='true'] {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: keep the menu button visible */
+@media (hover: none) {
+  .journal-menu-button {
+    opacity: 1;
+  }
+}
+
+.journal-menu-button:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 2px;
+}
+
+/* Kept within the journal's footprint so the desk edge never clips it */
+.journal-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  width: 112px;
+  padding: 4px;
+  border-radius: 8px;
+  background-color: #fffdf9;
+  box-shadow: 0 8px 24px rgba(30, 22, 14, 0.18), 0 0 0 1px rgba(70, 55, 35, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.journal-menu button {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #3a332b;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journal-menu button:hover,
+.journal-menu button:focus-visible {
+  background-color: #f2ede4;
+  outline: none;
+}
+
+/* Narrow screens: a tappable stack of journals */
+.journal-stack {
+  list-style: none;
+  margin: 0;
+  padding: 4px 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.journal-stack .journal {
+  position: relative;
+  width: 100%;
+  height: 72px;
+  transform: rotate(calc(var(--rotation) * 0.3));
+}
+
+.journal-stack .journal-cover {
+  cursor: pointer;
+  touch-action: auto;
+}
+
+.journal-stack .journal-label {
+  top: 50%;
+  left: 28px;
+  right: 44px; /* leave room for the menu button */
+  transform: translateY(-50%);
+  text-align: left;
+}
+
+/* One line, then an ellipsis */
+.journal-stack .journal-title {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.journal-stack .journal-menu-area {
+  top: 50%;
+  transform: translateY(-50%);
+  right: 10px;
+}
+
+.journal-stack .journal-menu {
+  z-index: 1;
+}
+
+/* New journal form */
+.new-journal-form {
+  display: flex;
+  gap: 8px;
+}
+
+.new-journal-form input,
+.library-search {
+  padding: 8px 12px;
+  border: 1px solid #d6cfc2;
+  border-radius: 999px;
+  background-color: #fffdf9;
+  font: inherit;
+  font-size: 14px;
+  min-width: 0;
+}
+
+.desk-action:focus-visible,
+.library-item-actions button:focus-visible,
+.library-close:focus-visible,
+.new-journal-form input:focus-visible,
+.library-search:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 2px;
+}
+
+/* Journal Library drawer */
+.library-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  background-color: rgba(40, 32, 24, 0.18);
+  animation: library-fade-in 0.2s ease;
+}
+
+.journal-library {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20001;
+  width: min(380px, 100%);
+  box-sizing: border-box;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background-color: #f7f3ec;
+  box-shadow: -12px 0 32px rgba(30, 22, 14, 0.14);
+  animation: library-slide-in 0.25s ease;
+}
+
+.library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.library-header h2 {
+  margin: 0;
+  color: #3a332b;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: normal;
+}
+
+.library-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: #4a4238;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.library-close:hover {
+  background-color: #ece6dc;
+}
+
+.library-empty {
+  margin: 8px 0;
+  color: #7a7064;
+  font-size: 14px;
+}
+
+.library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background-color: #fffdf9;
+  box-shadow: 0 0 0 1px rgba(70, 55, 35, 0.06);
+}
+
+/* A tiny journal spine in the list's cover color */
+.library-swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 38px;
+  border-radius: 2px 4px 4px 2px;
+  background-color: var(--cover);
+  box-shadow: inset 3px 0 0 rgba(0, 0, 0, 0.16);
+}
+
+.library-item-text {
+  flex: 1 1 auto;
+  min-width: 0; /* allow the name to truncate */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.library-item-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #3a332b;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 15px;
+}
+
+.library-item-status {
+  color: #8a8073;
+  font-size: 12px;
+}
+
+.library-item-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+
+.library-item-actions button {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.library-item-actions .library-place {
+  border-color: #b9ae9c;
+  background-color: #efe8dc;
+}
+
+@keyframes library-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes library-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-library,
+  .library-backdrop {
+    animation: none;
+  }
+}
+
+/* Very narrow screens: stack the library actions under the name */
+@media (max-width: 400px) {
+  .library-item {
+    flex-wrap: wrap;
+  }
+
+  .library-item-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
