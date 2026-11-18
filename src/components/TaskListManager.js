@@ -12,12 +12,25 @@
  */
 
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTasks } from '../context/TasksContext';
+
+// Firestore returns Timestamps; local state holds Dates. Missing values sort last.
+const toMillis = (value) => {
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    return 0;
+};
+
+// Most recent planning activity first. Lists with no activity yet (new or older lists) use their creation time.
+const byMostRecentActivity = (a, b) =>
+    toMillis(b.lastActivityAt ?? b.createdAt) - toMillis(a.lastActivityAt ?? a.createdAt) ||
+    (a.name || '').localeCompare(b.name || '');
 
 function TaskListManager() {
     // Destructure relevant state and functions from useTasks()
     const { taskLists = [], createTaskList, setActiveTaskListId, activeTaskListId } = useTasks();
+    const sortedTaskLists = useMemo(() => taskLists.slice().sort(byMostRecentActivity), [taskLists]);
 
     // Handle dropdown selection
     const handleTaskListChange = (event) => {
@@ -35,7 +48,7 @@ function TaskListManager() {
         <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
             <select value={activeTaskListId || ''} onChange={handleTaskListChange}>
                 {/* Render existing task lists */}
-                {taskLists.map((list) => (
+                {sortedTaskLists.map((list) => (
                     <option key={list.id} value={list.id}>
                         {list.name}
                     </option>

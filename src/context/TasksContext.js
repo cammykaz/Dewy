@@ -7,7 +7,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../firebaseConfig'; // Adjust the import path as necessary
-import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where, serverTimestamp } from 'firebase/firestore';
 
 // Create a new Context object. This will be used to provide and consume the tasks state throughout your app.
 const TasksContext = createContext();
@@ -61,6 +61,19 @@ export const TasksProvider = ({ children, userId }) => {
         console.log(`Calculating priority for impact: ${impact}, time: ${time}, result: ${priority}`);
         return priority;
     };
+
+    // Record meaningful planning activity on a task list (a task was added, or a task's impact/time changed).
+    // Task lists are sorted by this in the dropdown. Local state updates immediately; the Firestore write
+    // uses the server's clock so ordering is consistent across devices.
+    const markTaskListActive = useCallback((taskListId) => {
+        if (!taskListId) return;
+        setTaskLists(currentLists =>
+            currentLists.map(list => list.id === taskListId ? { ...list, lastActivityAt: new Date() } : list)
+        );
+        if (!userId) return;
+        updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), { lastActivityAt: serverTimestamp() })
+            .catch(error => console.error("Error updating task list activity:", error));
+    }, [userId]);
 
     const syncTaskWithFirestore = useCallback(async (task) => {
         console.log("🔄 Syncing task:", task);
@@ -179,12 +192,13 @@ export const TasksProvider = ({ children, userId }) => {
             let defaultTaskList = taskLists.find(taskList => taskList.name === "Default Task List");
             if (!defaultTaskList) {
                 console.log("🔄 Default Task List not found - creating it now");
-                const newDefaultTaskListRef = await addDoc(taskListsRef, {
+                const newDefaultTaskList = {
                     name: "Default Task List",
                     description: "A space for tasks not tied to a specific task list.",
                     createdAt: new Date(),
-                });
-                defaultTaskList = { id: newDefaultTaskListRef.id, name: "Default Task List", description: "A space for tasks not tied to a specific task list." };
+                };
+                const newDefaultTaskListRef = await addDoc(taskListsRef, newDefaultTaskList);
+                defaultTaskList = { id: newDefaultTaskListRef.id, ...newDefaultTaskList };
                 setTaskLists(prev => [...prev, defaultTaskList]);
                 console.log("✅ Default Task List created");
             }
@@ -210,6 +224,7 @@ export const TasksProvider = ({ children, userId }) => {
             // Step 4: Handle pre-login tasks
             if (thereArePreLoginTasks) {
                 console.log("🔄 Processing pre-login tasks...");
+                markTaskListActive(defaultTaskList.id); // Guest tasks arriving in a list count as activity (once per sync)
                 await handlePreLoginTasks(defaultTaskList.id);
             } else {
                 console.log("ℹ️ No pre-login tasks to process");
@@ -225,7 +240,7 @@ export const TasksProvider = ({ children, userId }) => {
             setSyncing(false); // End syncing process
             loginProcessCompleteRef.current = true;
         }
-    }, [userId, tasks, activeTaskListId, handlePreLoginTasks, fetchTasks, setTaskLists, setDefaultTaskListId, setActiveTaskListId,]);
+    }, [userId, tasks, activeTaskListId, handlePreLoginTasks, fetchTasks, markTaskListActive, setTaskLists, setDefaultTaskListId, setActiveTaskListId,]);
 
 
     /**
@@ -325,6 +340,7 @@ export const TasksProvider = ({ children, userId }) => {
 
         // Sync with Firestore if logged in
         if (userId) {
+            markTaskListActive(taskWithDetails.taskListId || defaultTaskListId); // Same list syncTaskWithFirestore saves to
             console.log("User found, syncing new task. Logged in with userId:", userId);
             console.log("Current activeTaskListId before syncing:", activeTaskListId);
             const syncedTask = await syncTaskWithFirestore(taskWithDetails); // Use the existing sync function
@@ -350,14 +366,21 @@ export const TasksProvider = ({ children, userId }) => {
         // Functional update so rapid successive edits each build on the latest state
         setTasks(currentTasks => currentTasks.map(task => task.id === taskId ? applyUpdate(task) : task));
 
+        // Actually changing impact or time is planning activity; renames, completion, and unchanged values aren't
+        const currentTask = tasks.find(task => task.id === taskId);
+        const isPlanningChange = currentTask && (
+            ('impact' in updatedFields && updatedFields.impact !== currentTask.impact) ||
+            ('time' in updatedFields && updatedFields.time !== currentTask.time)
+        );
+        if (isPlanningChange) markTaskListActive(activeTaskListId);
+
         // Guests: local state only. Their tasks are synced to Firestore on login (handlePreLoginTasks).
         if (!userId) return;
 
         // Only write the fields that changed, so overlapping writes can't overwrite each other's fields
         const changes = { ...updatedFields };
-        if ('impact' in updatedFields || 'time' in updatedFields) {
-            const currentTask = tasks.find(task => task.id === taskId);
-            if (currentTask) changes.priority = applyUpdate(currentTask).priority;
+        if (currentTask && ('impact' in updatedFields || 'time' in updatedFields)) {
+            changes.priority = applyUpdate(currentTask).priority;
         }
 
         // Task is still being saved to Firestore for the first time: hold the edit until it has a real ID

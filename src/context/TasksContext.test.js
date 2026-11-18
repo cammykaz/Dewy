@@ -1,5 +1,5 @@
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 import { TasksProvider, useTasks } from './TasksContext';
 import TaskManager from '../components/TaskManager';
 
@@ -13,6 +13,7 @@ jest.mock('firebase/firestore', () => ({
   getDocs: jest.fn(),
   query: jest.fn(),
   where: jest.fn(),
+  serverTimestamp: jest.fn(),
 }));
 
 // CRA's Jest config resets mocks before each test, so set implementations here
@@ -21,6 +22,7 @@ beforeEach(() => {
   doc.mockImplementation((db, path, id) => ({ path: `${path}/${id}` }));
   updateDoc.mockResolvedValue();
   deleteDoc.mockResolvedValue();
+  serverTimestamp.mockReturnValue('SERVER_TIMESTAMP');
   localStorage.clear();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -112,7 +114,7 @@ test('guest edits made while the login sync is in flight are saved to Firestore'
     };
   }));
   updateDoc.mockImplementation(async (ref, changes) => {
-    Object.assign(firestoreTasks[0], changes);
+    if (ref.path !== 'users/u1/taskLists/list1') Object.assign(firestoreTasks[0], changes); // skip list activity writes
   });
 
   const { rerender } = render(app(undefined));
@@ -143,4 +145,111 @@ test('guest edits made while the login sync is in flight are saved to Firestore'
     { path: 'users/u1/taskLists/list1/tasks/doc1' },
     { impact: 'Minimal', priority: 'K' }
   );
+});
+
+describe('task list activity (lastActivityAt)', () => {
+  const LIST_PATH = 'users/u1/taskLists/list1';
+  const listActivityWrites = (path = LIST_PATH) =>
+    updateDoc.mock.calls.filter(([ref]) => ref.path === path);
+  const list = (id) => ctx.taskLists.find((l) => l.id === id);
+
+  // Logged-in user with two lists; list1 (Default) is active and holds one task
+  const renderLoggedIn = async () => {
+    getDocs.mockImplementation(async (ref) => {
+      if (ref.path === 'users/u1/taskLists') {
+        return {
+          docs: [
+            { id: 'list1', data: () => ({ name: 'Default Task List' }) },
+            { id: 'list2', data: () => ({ name: 'Work' }) },
+          ],
+        };
+      }
+      if (ref.path === `${LIST_PATH}/tasks`) {
+        const task = { id: 't1', name: 'Existing', impact: 'Medium', time: '10 Minutes', priority: 'I' };
+        return { docs: [{ id: 't1', data: () => task }] };
+      }
+      return { docs: [] };
+    });
+    addDoc.mockResolvedValue({ id: 'new1' });
+    render(app('u1'));
+    await waitFor(() => expect(ctx.tasks).toHaveLength(1));
+    expect(ctx.activeTaskListId).toBe('list1');
+    updateDoc.mockClear();
+  };
+
+  test('adding a task marks its list active immediately, before the task is saved', async () => {
+    await renderLoggedIn();
+    let resolveAddDoc;
+    addDoc.mockImplementation(() => new Promise((resolve) => { resolveAddDoc = resolve; }));
+
+    act(() => {
+      ctx.addTask({ id: 'temp-x', name: 'New', impact: 'Minimal', time: '10 Minutes', createdAt: new Date() });
+    });
+
+    expect(list('list1').lastActivityAt).toBeInstanceOf(Date);
+    expect(list('list2').lastActivityAt).toBeUndefined();
+    expect(listActivityWrites()).toEqual([[{ path: LIST_PATH }, { lastActivityAt: 'SERVER_TIMESTAMP' }]]);
+
+    await act(async () => resolveAddDoc({ id: 'new1' }));
+  });
+
+  test.each([
+    ['impact', { impact: 'Minimal' }],
+    ['time', { time: '2 Hours' }],
+  ])('changing a task\'s %s marks the list active', async (_, change) => {
+    await renderLoggedIn();
+    await act(async () => { await ctx.updateTask('t1', change); });
+    expect(list('list1').lastActivityAt).toBeInstanceOf(Date);
+    expect(listActivityWrites()).toHaveLength(1);
+  });
+
+  test.each([
+    ['renaming a task', () => ctx.updateTask('t1', { name: 'Renamed' })],
+    ['completing a task', () => ctx.toggleTaskDone('t1', true)],
+    ['uncompleting a task', () => ctx.toggleTaskDone('t1', false)],
+    ['re-saving an unchanged impact', () => ctx.updateTask('t1', { impact: 'Medium' })],
+    ['re-saving an unchanged time', () => ctx.updateTask('t1', { time: '10 Minutes' })],
+    ['deleting a task', () => ctx.deleteTask('t1')],
+    ['switching lists', () => ctx.setActiveTaskListId('list2')],
+  ])('%s does not mark any list active', async (_, action) => {
+    await renderLoggedIn();
+    await act(async () => { await action(); });
+    await waitFor(() => {}); // let any list-switch fetch settle
+    expect(ctx.taskLists.every((l) => l.lastActivityAt === undefined)).toBe(true);
+    expect(listActivityWrites()).toHaveLength(0);
+    expect(listActivityWrites('users/u1/taskLists/list2')).toHaveLength(0);
+  });
+
+  test('guests do not write activity to Firestore', () => {
+    render(app(undefined));
+    addGuestTask('Guest task');
+    act(() => { ctx.updateTask(ctx.tasks[0].id, { impact: 'Minimal' }); });
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  test('syncing guest tasks at login marks the default list once', async () => {
+    const firestoreTasks = [];
+    getDocs.mockImplementation(async (ref) => {
+      if (ref.path === 'users/u1/taskLists') {
+        return { docs: [{ id: 'list1', data: () => ({ name: 'Default Task List' }) }] };
+      }
+      return { docs: firestoreTasks.map((t) => ({ id: t.id, data: () => t })) };
+    });
+    let nextId = 0;
+    addDoc.mockImplementation(async (ref, data) => {
+      const id = `doc${nextId++}`;
+      firestoreTasks.push({ ...data, id });
+      return { id };
+    });
+
+    const { rerender } = render(app(undefined));
+    addGuestTask('Guest task 1');
+    addGuestTask('Guest task 2');
+    rerender(app('u1'));
+
+    await waitFor(() => expect(ctx.tasks.map((t) => t.id).sort()).toEqual(['doc0', 'doc1']));
+    expect(listActivityWrites()).toHaveLength(1);
+    expect(list('list1').lastActivityAt).toBeInstanceOf(Date);
+    expect(ctx.activeTaskListId).toBe('list1');
+  });
 });
