@@ -1,8 +1,53 @@
 /* TaskRow.js */
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './TaskRow.css'; // Import specific styles for the TaskRow
 
 function TaskRow({ id, name, impact, time, priority, onDelete, onFieldUpdate, isDone, onToggleDone }) {
+  // Inline name editing
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(name);
+  const nameCellRef = useRef(null);
+  // Set when editing ends via Enter/Escape, so the input's blur doesn't save again (or save after Escape)
+  const closedByKeyRef = useRef(false);
+
+  const startEditingName = () => {
+    closedByKeyRef.current = false;
+    setDraftName(name);
+    setIsEditingName(true);
+  };
+
+  const finishEditingName = (save) => {
+    const trimmedName = draftName.trim();
+    // Empty names aren't allowed: an empty draft reverts to the existing name
+    if (save && trimmedName && trimmedName !== name) {
+      onFieldUpdate(id, { name: trimmedName });
+    }
+    setIsEditingName(false);
+  };
+
+  const handleNameKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      closedByKeyRef.current = true;
+      finishEditingName(true);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closedByKeyRef.current = true;
+      finishEditingName(false);
+    }
+  };
+
+  const handleNameBlur = () => {
+    if (!closedByKeyRef.current) finishEditingName(true);
+  };
+
+  // After closing with the keyboard, return focus to the name so keyboard users don't lose their place
+  useEffect(() => {
+    if (!isEditingName && closedByKeyRef.current) {
+      closedByKeyRef.current = false;
+      nameCellRef.current?.focus();
+    }
+  }, [isEditingName]);
 
   const handleFieldChange = (e) => {
     const fieldName = e.target.name; // This will be either 'impact' or 'time'
@@ -21,7 +66,37 @@ function TaskRow({ id, name, impact, time, priority, onDelete, onFieldUpdate, is
         <input type="checkbox" checked={isTaskDone} onChange={(e) => onToggleDone(id, e.target.checked)} />
       </div>
       {/* Task Name */}
-      <div className="task-cell name-cell">{name}</div>
+      {isEditingName ? (
+        <div className="task-cell name-cell">
+          <input
+            type="text"
+            className="name-input"
+            aria-label="Task name"
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={handleNameKeyDown}
+            onBlur={handleNameBlur}
+            autoFocus
+          />
+        </div>
+      ) : (
+        <div
+          ref={nameCellRef}
+          className="task-cell name-cell editable"
+          role="button"
+          tabIndex={0}
+          aria-label={`Edit task name: ${name}`}
+          onClick={startEditingName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              startEditingName();
+            }
+          }}
+        >
+          {name}
+        </div>
+      )}
       {/* Impact Dropdown */}
       <div className="task-cell impact-cell">
         <select name="impact" value={impact} onChange={handleFieldChange}>

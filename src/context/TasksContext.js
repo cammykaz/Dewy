@@ -26,6 +26,9 @@ export const TasksProvider = ({ children, userId }) => {
     const [defaultTaskListId, setDefaultTaskListId] = useState(null); // ID of the default task list
     const [activeTaskListId, setActiveTaskListId] = useState(null); // ID of the currently active task list
     const loginProcessCompleteRef = useRef(false);
+    // Edits made to a task while its first Firestore save is in flight (it still has a "temp-" ID).
+    // Keyed by temp ID; applied once the task gets its Firestore ID. See syncTaskWithFirestore.
+    const pendingEditsRef = useRef({});
 
     /**
     * Utility Functions
@@ -72,13 +75,15 @@ export const TasksProvider = ({ children, userId }) => {
             // Add the task to Firestore
             const tasksRef = collection(db, `users/${userId}/taskLists/${taskListToUse}/tasks`);
             const docRef = await addDoc(tasksRef, taskForFirestore); // Add task to Firestore
-            // Immediately update the task to include the Firestore-generated ID as a field
-            await updateDoc(docRef, { id: docRef.id });
-            // Update the task in local state with the Firestore-generated ID
-            const syncedTask = { ...task, id: docRef.id };
+            // Swap tempId for the Firestore ID in local state, keeping any edits made while addDoc was in flight
             setTasks(currentTasks =>
-                currentTasks.map(task => task.id === tempId ? syncedTask : task) // Replace tempId with Firestore ID
+                currentTasks.map(t => t.id === tempId ? { ...t, id: docRef.id } : t)
             );
+            // Store the Firestore-generated ID as a field, along with any edits made while addDoc was in flight
+            const pendingEdits = pendingEditsRef.current[tempId] || {};
+            delete pendingEditsRef.current[tempId];
+            await updateDoc(docRef, { id: docRef.id, ...pendingEdits });
+            const syncedTask = { ...task, ...pendingEdits, id: docRef.id };
             console.log(`✅ Task saved with Firestore ID: ${docRef.id}`);
             return syncedTask;
         } catch (error) {
@@ -118,6 +123,7 @@ export const TasksProvider = ({ children, userId }) => {
     const clearTasks = useCallback(() => {
         console.log("clearTasks called");
         setTasks([]);
+        pendingEditsRef.current = {};
         loginProcessCompleteRef.current = false;  // Reset the ref on logout
         console.log("loginProcessCompleteRef reset to false on logout");
     }, []);
@@ -332,73 +338,50 @@ export const TasksProvider = ({ children, userId }) => {
         }
     };
 
-    // Update Task Function
+    // Update Task Function. Works for guests (local state only) and logged-in users (local state + Firestore).
     const updateTask = async (taskId, updatedFields) => {
-        if (!activeTaskListId) {
-            console.error("No active task list selected.");
+        // Merge the changes into a task, recalculating priority from the resulting impact and time
+        const applyUpdate = (task) => ({
+            ...task,
+            ...updatedFields,
+            priority: calculatePriority(updatedFields.impact || task.impact, updatedFields.time || task.time),
+        });
+
+        // Functional update so rapid successive edits each build on the latest state
+        setTasks(currentTasks => currentTasks.map(task => task.id === taskId ? applyUpdate(task) : task));
+
+        // Guests: local state only. Their tasks are synced to Firestore on login (handlePreLoginTasks).
+        if (!userId) return;
+
+        // Only write the fields that changed, so overlapping writes can't overwrite each other's fields
+        const changes = { ...updatedFields };
+        if ('impact' in updatedFields || 'time' in updatedFields) {
+            const currentTask = tasks.find(task => task.id === taskId);
+            if (currentTask) changes.priority = applyUpdate(currentTask).priority;
+        }
+
+        // Task is still being saved to Firestore for the first time: hold the edit until it has a real ID
+        if (taskId.startsWith("temp-")) {
+            pendingEditsRef.current[taskId] = { ...pendingEditsRef.current[taskId], ...changes };
             return;
         }
 
-        // Find the task that needs to be updated
-        const updatedTasks = tasks.map(task => {
-            if (task.id === taskId) {
-                // Recalculate priority if impact or time is updated
-                const updatedImpact = updatedFields.impact || task.impact;
-                const updatedTime = updatedFields.time || task.time;
-                const updatedPriority = calculatePriority(updatedImpact, updatedTime);
+        if (!activeTaskListId) {
+            console.error("No active task list selected. Firestore update skipped.");
+            return;
+        }
 
-                // Return updated task with recalculated priority
-                return { ...task, ...updatedFields, priority: updatedPriority };
-            }
-            return task; // No change for other tasks
-        });
-
-        // Update the local state with the new list of tasks
-        setTasks(updatedTasks);
-
-        // Sync the updated task with Firestore if logged in
-        if (userId) {
-            try {
-                const taskRef = doc(db, `users/${userId}/taskLists/${activeTaskListId}/tasks`, taskId);
-                const updatedTask = updatedTasks.find(task => task.id === taskId); // Find the updated task
-                await updateDoc(taskRef, updatedTask);  // Sync all updated fields
-                console.log("Task synced with Firestore:", updatedTask);
-            } catch (error) {
-                console.error("Error updating task in Firestore:", error);
-            }
+        try {
+            const taskRef = doc(db, `users/${userId}/taskLists/${activeTaskListId}/tasks`, taskId);
+            await updateDoc(taskRef, changes);
+            console.log("Task synced with Firestore:", taskId, changes);
+        } catch (error) {
+            console.error("Error updating task in Firestore:", error);
         }
     };
 
     // Task Done Function
-    const toggleTaskDone = async (taskId, isDone) => {
-        if (!activeTaskListId) {
-            console.error("No active task list selected.");
-            return;
-        }
-
-        // Find and update the 'isDone' field for the task with taskId
-        const updatedTasks = tasks.map(task => {
-            if (task.id === taskId) {
-                return { ...task, isDone };
-            }
-            return task;
-        });
-
-        // Update the local state with the new list of tasks
-        setTasks(updatedTasks);
-
-        // Sync the updated task with Firestore if logged in
-        if (userId) {
-            try {
-                const taskRef = doc(db, `users/${userId}/taskLists/${activeTaskListId}/tasks`, taskId);
-                const updatedTask = updatedTasks.find(task => task.id === taskId); // Find the updated task
-                await updateDoc(taskRef, updatedTask);  // Sync all updated fields
-                console.log("Task marked as done and synced with Firestore:", updatedTask);
-            } catch (error) {
-                console.error("Error updating task done status to Firestore:", error);
-            }
-        }
-    };
+    const toggleTaskDone = (taskId, isDone) => updateTask(taskId, { isDone });
 
 
     // Delete Task Function
