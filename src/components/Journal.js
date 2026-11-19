@@ -18,9 +18,9 @@ const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 /**
  * Desk mode: pass left/top/zIndex (px), range ({ width, height } of free space), and onMoveEnd(left, top).
  * Stack mode (narrow screens): omit them; the journal is a plain tappable cover.
- * Pass onPutAway to show the journal's action menu.
+ * Pass onPutAway to show the journal's action menu, and onDelete to include "Delete…" in it.
  */
-function Journal({ name, color, rotation, left, top, zIndex, range, onOpen, onMoveEnd, onPutAway }) {
+function Journal({ name, color, rotation, left, top, zIndex, range, onOpen, onMoveEnd, onPutAway, onDelete }) {
   const isDraggable = Boolean(onMoveEnd && range);
   const dragRef = useRef(null); // { pointerId, startX, startY, startLeft, startTop, left, top, moved }
   const suppressClickRef = useRef(false); // the click that follows a drag shouldn't open the journal
@@ -144,6 +144,16 @@ function Journal({ name, color, rotation, left, top, zIndex, range, onOpen, onMo
               <button type="button" role="menuitem" onClick={() => { setIsMenuOpen(false); onPutAway(); }}>
                 Put away
               </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="journal-menu-delete"
+                  onClick={() => { setIsMenuOpen(false); onDelete(); }}
+                >
+                  Delete…
+                </button>
+              )}
             </div>
           )}
         </div>

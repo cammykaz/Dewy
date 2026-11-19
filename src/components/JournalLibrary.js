@@ -9,7 +9,8 @@ import { useTasks } from '../context/TasksContext';
 import { byMostRecentActivity } from '../utils/taskListSort';
 import { coverColor, isOnDesk } from '../utils/journals';
 
-function JournalLibrary({ onClose, onOpenJournal }) {
+// canDelete(list) decides whether a row offers Delete; onDelete(list) asks the desk to confirm it.
+function JournalLibrary({ onClose, onOpenJournal, canDelete, onDelete }) {
   const { taskLists = [], setTaskListOnDesk } = useTasks();
   const [search, setSearch] = useState('');
 
@@ -82,6 +83,16 @@ function JournalLibrary({ onClose, onOpenJournal }) {
                         onClick={() => setTaskListOnDesk(list.id, true)}
                       >
                         Place on desk
+                      </button>
+                    )}
+                    {canDelete(list) && (
+                      <button
+                        type="button"
+                        className="library-delete"
+                        aria-label={`Delete ${list.name}`}
+                        onClick={() => onDelete(list)}
+                      >
+                        Delete
                       </button>
                     )}
                   </span>

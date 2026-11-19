@@ -17,3 +17,9 @@ export const coverRotation = (id) => ((hashString(id) % 7) - 3) * 0.6; // -1.8°
 
 // Lists without the onDesk field (all lists created before the library existed) stay on the desk
 export const isOnDesk = (list) => list.onDesk !== false;
+
+// The system list that guest tasks sync into at login. It's found by this name, so the name is
+// reserved (case-insensitive, ignoring surrounding whitespace) and the list can't be deleted.
+export const DEFAULT_TASK_LIST_NAME = "Default Task List";
+export const isReservedJournalName = (name) =>
+  (name || '').trim().toLowerCase() === DEFAULT_TASK_LIST_NAME.toLowerCase();

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import Desk from './Desk';
 import { JOURNAL_WIDTH, JOURNAL_HEIGHT } from './Journal';
 import { useTasks } from '../context/TasksContext';
@@ -43,28 +43,35 @@ const useNarrowScreen = () => {
 // Stand-in for TasksContext that keeps taskLists in state, mirroring how the real context merges
 // fields locally, so the desk and library update as they would in the app.
 const FakeTasks = createContext(null);
-function FakeTasksProvider({ initialLists, spies, children }) {
+function FakeTasksProvider({ initialLists, defaultTaskListId, spies, children }) {
   const [taskLists, setTaskLists] = useState(initialLists);
   const merge = (id, fields) => setTaskLists((lists) => lists.map((l) => (l.id === id ? { ...l, ...fields } : l)));
   const value = {
     taskLists,
+    defaultTaskListId,
     createTaskList: spies.createTaskList,
     updateTaskListPosition: (id, deskPosition) => { spies.updateTaskListPosition(id, deskPosition); merge(id, { deskPosition }); },
     setTaskListOnDesk: (id, onDesk) => { spies.setTaskListOnDesk(id, onDesk); merge(id, { onDesk }); },
+    // Like the real context: removes the list only once deletion succeeds; rejects otherwise
+    deleteTaskList: async (id) => {
+      await spies.deleteTaskList(id);
+      setTaskLists((lists) => lists.filter((l) => l.id !== id));
+    },
   };
   return <FakeTasks.Provider value={value}>{children}</FakeTasks.Provider>;
 }
 
-const renderDesk = (taskLists) => {
+const renderDesk = (taskLists, { defaultTaskListId = 'default-id' } = {}) => {
   const spies = {
     createTaskList: jest.fn(),
     updateTaskListPosition: jest.fn(),
     setTaskListOnDesk: jest.fn(),
+    deleteTaskList: jest.fn(async () => {}),
   };
   useTasks.mockImplementation(() => useContext(FakeTasks));
   const onOpenJournal = jest.fn();
   render(
-    <FakeTasksProvider initialLists={taskLists} spies={spies}>
+    <FakeTasksProvider initialLists={taskLists} defaultTaskListId={defaultTaskListId} spies={spies}>
       <Desk onOpenJournal={onOpenJournal} />
     </FakeTasksProvider>
   );
@@ -407,5 +414,169 @@ describe('Journal Library', () => {
     expect(setTaskListOnDesk).toHaveBeenCalledWith('c', true);
     const stack = document.querySelector('.journal-stack');
     expect(within(stack).getByRole('button', { name: 'Open Gift ideas' })).toBeInTheDocument();
+  });
+});
+
+describe('deleting journals', () => {
+  const journals = [
+    { id: 'default-id', name: 'Default Task List', createdAt: timestamp(1) },
+    { id: 'a', name: 'Work', createdAt: timestamp(2), deskPosition: { x: 0.5, y: 0.5, z: 1 } },
+    { id: 'b', name: 'Stored', createdAt: timestamp(3), onDesk: false },
+  ];
+  const openMenu = (name) => fireEvent.click(screen.getByRole('button', { name: `Actions for ${name}` }));
+  const startDeleteFromMenu = (name) => {
+    openMenu(name);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    return screen.getByRole('alertdialog');
+  };
+  const openLibrary = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Journal Library' }));
+    return screen.getByRole('dialog', { name: 'Journal Library' });
+  };
+  // Lets the dialog's async confirm settle
+  const flush = () => act(async () => {});
+
+  test('the confirmation names the journal and says its tasks are permanently deleted', () => {
+    renderDesk(journals);
+    const dialog = startDeleteFromMenu('Work');
+    expect(dialog).toHaveAccessibleName('Delete “Work”?');
+    expect(dialog).toHaveAccessibleDescription(/permanently deletes the journal and all of its tasks/);
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+  });
+
+  test('Cancel, Escape, and the backdrop leave everything unchanged', () => {
+    const { deleteTaskList } = renderDesk(journals);
+
+    fireEvent.click(within(startDeleteFromMenu('Work')).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+
+    startDeleteFromMenu('Work');
+    fireEvent.keyDown(document.activeElement, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+
+    startDeleteFromMenu('Work');
+    fireEvent.click(document.querySelector('.dialog-backdrop'));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+
+    expect(deleteTaskList).not.toHaveBeenCalled();
+    expect(queryCover('Work')).toBeInTheDocument();
+  });
+
+  test('confirming deletes the journal and removes it from the desk and library', async () => {
+    const { deleteTaskList } = renderDesk(journals);
+    const dialog = startDeleteFromMenu('Work');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete journal' }));
+    await flush();
+
+    expect(deleteTaskList).toHaveBeenCalledWith('a');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(queryCover('Work')).not.toBeInTheDocument();
+    expect(within(openLibrary()).queryByText('Work')).not.toBeInTheDocument();
+  });
+
+  test('a put-away journal can be deleted from the library without closing it', async () => {
+    const { deleteTaskList } = renderDesk(journals);
+    const library = openLibrary();
+    fireEvent.click(within(library).getByRole('button', { name: 'Delete Stored' }));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete journal' }));
+    await flush();
+
+    expect(deleteTaskList).toHaveBeenCalledWith('b');
+    expect(within(library).queryByText('Stored')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Journal Library' })).toBeInTheDocument();
+  });
+
+  test('Escape in the confirmation does not also close the library', () => {
+    renderDesk(journals);
+    fireEvent.click(within(openLibrary()).getByRole('button', { name: 'Delete Stored' }));
+    fireEvent.keyDown(document.activeElement, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Journal Library' })).toBeInTheDocument();
+  });
+
+  test('while deleting, the dialog shows progress and cannot be dismissed', async () => {
+    const { deleteTaskList } = renderDesk(journals);
+    let finish;
+    deleteTaskList.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const dialog = startDeleteFromMenu('Work');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete journal' }));
+
+    expect(within(dialog).getByRole('button', { name: 'Deleting…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(document.querySelector('.dialog-backdrop'));
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+
+    await act(async () => finish());
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  test('a Firestore failure keeps the journal and the dialog open with an error, and can be retried', async () => {
+    const { deleteTaskList } = renderDesk(journals);
+    deleteTaskList.mockRejectedValueOnce(new Error('unavailable'));
+    const dialog = startDeleteFromMenu('Work');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete journal' }));
+    await flush();
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(/Couldn't delete this journal/);
+    expect(within(dialog).getByRole('button', { name: 'Delete journal' })).toBeEnabled();
+    expect(queryCover('Work')).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete journal' }));
+    await flush();
+    expect(deleteTaskList).toHaveBeenCalledTimes(2);
+    expect(queryCover('Work')).not.toBeInTheDocument();
+  });
+
+  test('a refusal from the context shows its own message', async () => {
+    const { deleteTaskList } = renderDesk(journals);
+    deleteTaskList.mockRejectedValueOnce(Object.assign(new Error('busy'), { userMessage: 'Still saving, try again.' }));
+    const dialog = startDeleteFromMenu('Work');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete journal' }));
+    await flush();
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Still saving, try again.');
+  });
+
+  test('the Default Task List offers no Delete action on the desk or in the library', () => {
+    renderDesk(journals);
+    openMenu('Default Task List');
+    expect(screen.getByRole('menuitem', { name: 'Put away' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Delete…' })).not.toBeInTheDocument();
+
+    const library = openLibrary();
+    expect(within(library).queryByRole('button', { name: 'Delete Default Task List' })).not.toBeInTheDocument();
+    expect(within(library).getByRole('button', { name: 'Delete Work' })).toBeInTheDocument();
+  });
+
+  test('no journal can be deleted until the Default Task List is known', () => {
+    renderDesk(journals, { defaultTaskListId: null });
+    openMenu('Work');
+    expect(screen.queryByRole('menuitem', { name: 'Delete…' })).not.toBeInTheDocument();
+  });
+
+  test('Put away stays separate from Delete', () => {
+    const { deleteTaskList, setTaskListOnDesk } = renderDesk(journals);
+    openMenu('Work');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Put away' }));
+    expect(setTaskListOnDesk).toHaveBeenCalledWith('a', false);
+    expect(deleteTaskList).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  test('New journal refuses the reserved Default name and keeps the form open', () => {
+    const { createTaskList } = renderDesk(journals);
+    fireEvent.click(screen.getByRole('button', { name: '+ New journal' }));
+    const input = screen.getByRole('textbox', { name: 'New journal name' });
+    fireEvent.change(input, { target: { value: '  DEFAULT task list ' } });
+    fireEvent.submit(input.closest('form'));
+
+    expect(createTaskList).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/reserved/);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+
+    fireEvent.change(input, { target: { value: 'Default Task List ideas' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.submit(input.closest('form'));
+    expect(createTaskList).toHaveBeenCalledWith('Default Task List ideas');
   });
 });

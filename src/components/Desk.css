@@ -469,3 +469,105 @@
     justify-content: flex-end;
   }
 }
+
+/* Destructive actions: kept visually apart from Open / Put away */
+.journal-menu .journal-menu-delete {
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid #eee7dc;
+  border-radius: 0 0 6px 6px;
+  color: #a33a2c;
+}
+
+.library-item-actions .library-delete {
+  border-color: transparent;
+  background: none;
+  color: #a33a2c;
+}
+
+.library-item-actions .library-delete:hover {
+  background-color: #f8e9e5;
+}
+
+/* Reserved-name message under the New journal field */
+.new-journal-form {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.new-journal-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: #a33a2c;
+  font-size: 13px;
+  text-align: right;
+}
+
+/* Delete confirmation dialog (above the library drawer) */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  background-color: rgba(40, 32, 24, 0.32);
+  animation: library-fade-in 0.15s ease;
+}
+
+.confirm-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 30001;
+  width: min(420px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 24px;
+  transform: translate(-50%, -50%);
+  border-radius: 14px;
+  background-color: #fffdf9;
+  box-shadow: 0 24px 60px rgba(30, 22, 14, 0.25);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 10px;
+  color: #3a332b;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: normal;
+  overflow-wrap: break-word;
+}
+
+.confirm-dialog p {
+  margin: 0 0 16px;
+  color: #5c5348;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.confirm-dialog .dialog-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background-color: #f8e9e5;
+  color: #8c2f23;
+  font-size: 14px;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.desk-action.danger {
+  border-color: #a33a2c;
+  background-color: #a33a2c;
+  color: #fffdf9;
+}
+
+.desk-action.danger:hover {
+  background-color: #8c2f23;
+}
+
+.desk-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

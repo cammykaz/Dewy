@@ -7,7 +7,12 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../firebaseConfig'; // Adjust the import path as necessary
-import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { byMostRecentActivity } from '../utils/taskListSort';
+import { isReservedJournalName } from '../utils/journals';
+
+// Firestore allows at most 500 operations per write batch
+const FIRESTORE_BATCH_LIMIT = 500;
 
 // Create a new Context object. This will be used to provide and consume the tasks state throughout your app.
 const TasksContext = createContext();
@@ -237,7 +242,8 @@ export const TasksProvider = ({ children, userId }) => {
             let taskListToUse;
             if (thereArePreLoginTasks) {
                 taskListToUse = defaultTaskList.id;
-            } else if (lastActiveTaskList) {
+            } else if (lastActiveTaskList && taskLists.some(taskList => taskList.id === lastActiveTaskList)) {
+                // Only restore the remembered list if it still exists (it may have been deleted on another device)
                 taskListToUse = lastActiveTaskList;
             } else {
                 taskListToUse = defaultTaskList.id;
@@ -318,6 +324,10 @@ export const TasksProvider = ({ children, userId }) => {
     // Create a new task list
     const createTaskList = async (name, description = "") => {
         if (!userId || !name) return;
+        if (isReservedJournalName(name)) {
+            console.warn(`"${name.trim()}" is reserved for the system Default Task List.`);
+            return;
+        }
         try {
             const taskListsRef = collection(db, `users/${userId}/taskLists`);
             const newTaskList = {
@@ -330,6 +340,52 @@ export const TasksProvider = ({ children, userId }) => {
             setActiveTaskListId(docRef.id);
         } catch (error) {
             console.error("Error creating task list:", error);
+        }
+    };
+
+    // Permanently delete a task list and every task in it.
+    // Firestore doesn't delete subcollections with their parent, so the tasks are listed and deleted
+    // explicitly, in batches of up to 500 writes, with the list document in the final batch. Lists under
+    // 500 tasks are deleted in one atomic batch. If a larger deletion fails partway, the list document
+    // (deleted last) survives with its remaining tasks, so it stays visible and can be deleted again.
+    // Local state changes only after Firestore confirms. Throws on failure so the caller can report it.
+    const deleteTaskList = async (taskListId) => {
+        const refuse = (userMessage) => {
+            const error = new Error(userMessage);
+            error.userMessage = userMessage;
+            throw error;
+        };
+        if (!userId) refuse("You need to be logged in to delete a journal.");
+        if (!defaultTaskListId || taskListId === defaultTaskListId) refuse("The Default Task List can't be deleted.");
+        // A new task still being saved could otherwise land in the list after it's deleted
+        if (taskListId === activeTaskListId && tasks.some(task => task.id.startsWith("temp-"))) {
+            refuse("This journal is still saving a new task. Please try again in a moment.");
+        }
+
+        const tasksPath = `users/${userId}/taskLists/${taskListId}/tasks`;
+        try {
+            const tasksSnapshot = await getDocs(collection(db, tasksPath));
+            const refsToDelete = [
+                ...tasksSnapshot.docs.map(taskDoc => doc(db, tasksPath, taskDoc.id)),
+                doc(db, `users/${userId}/taskLists`, taskListId), // list document last
+            ];
+            for (let start = 0; start < refsToDelete.length; start += FIRESTORE_BATCH_LIMIT) {
+                const batch = writeBatch(db);
+                refsToDelete.slice(start, start + FIRESTORE_BATCH_LIMIT).forEach(ref => batch.delete(ref));
+                await batch.commit();
+            }
+            console.log(`✅ Deleted task list ${taskListId} and ${tasksSnapshot.docs.length} tasks`);
+        } catch (error) {
+            console.error("❌ Error deleting task list:", error);
+            // Some tasks may have been deleted before the failure; show what's actually left
+            if (taskListId === activeTaskListId) fetchTasks();
+            throw error;
+        }
+
+        setTaskLists(currentLists => currentLists.filter(list => list.id !== taskListId));
+        if (taskListId === activeTaskListId) {
+            const [nextList] = taskLists.filter(list => list.id !== taskListId).sort(byMostRecentActivity);
+            setActiveTaskListId(nextList?.id || defaultTaskListId);
         }
     };
 
@@ -468,6 +524,8 @@ export const TasksProvider = ({ children, userId }) => {
             activeTaskListId,
             setActiveTaskListId,
             createTaskList,
+            deleteTaskList,
+            defaultTaskListId,
             updateTaskListPosition,
             setTaskListOnDesk
         }}>

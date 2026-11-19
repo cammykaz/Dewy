@@ -1,5 +1,5 @@
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { TasksProvider, useTasks } from './TasksContext';
 import TaskManager from '../components/TaskManager';
 
@@ -14,6 +14,7 @@ jest.mock('firebase/firestore', () => ({
   query: jest.fn(),
   where: jest.fn(),
   serverTimestamp: jest.fn(),
+  writeBatch: jest.fn(),
 }));
 
 // CRA's Jest config resets mocks before each test, so set implementations here
@@ -285,5 +286,187 @@ describe('task list activity (lastActivityAt)', () => {
     expect(listActivityWrites()).toHaveLength(1);
     expect(list('list1').lastActivityAt).toBeInstanceOf(Date);
     expect(ctx.activeTaskListId).toBe('list1');
+  });
+});
+
+describe('deleting task lists', () => {
+  const LISTS = 'users/u1/taskLists';
+  let batches;
+
+  // Logged in with the Default list, "Work" (older activity) and "Ideas" (newer activity)
+  const renderWithLists = async ({ lists, activeId, tasks = {} } = {}) => {
+    const taskLists = lists || [
+      { id: 'list1', name: 'Default Task List' },
+      { id: 'list2', name: 'Work', lastActivityAt: { toMillis: () => 100 } },
+      { id: 'list3', name: 'Ideas', lastActivityAt: { toMillis: () => 200 } },
+    ];
+    getDocs.mockImplementation(async (ref) => {
+      if (ref.path === LISTS) return { docs: taskLists.map((l) => ({ id: l.id, data: () => l })) };
+      const listTasks = tasks[ref.path.split('/')[3]] || [];
+      return { docs: listTasks.map((t) => ({ id: t.id, data: () => t })) };
+    });
+    if (activeId) localStorage.setItem('lastActiveTaskList', activeId);
+    render(app('u1'));
+    await waitFor(() => expect(ctx.taskLists).toHaveLength(taskLists.length));
+    await waitFor(() => expect(ctx.activeTaskListId).toBe(activeId || 'list1'));
+    updateDoc.mockClear();
+  };
+
+  const makeTasks = (count) =>
+    Array.from({ length: count }, (_, i) => ({ id: `t${i}`, name: `Task ${i}`, impact: 'Medium', time: '1 Hour', priority: 'M' }));
+
+  // Records each batch's deletes; commit() runs the given behavior (resolves by default)
+  const mockBatches = (commitBehavior = async () => {}) => {
+    writeBatch.mockImplementation(() => {
+      const batch = { deleted: [] };
+      batch.delete = jest.fn((ref) => batch.deleted.push(ref.path));
+      batch.commit = jest.fn(() => commitBehavior(batches.indexOf(batch)));
+      batches.push(batch);
+      return batch;
+    });
+  };
+
+  beforeEach(() => {
+    batches = [];
+    mockBatches();
+  });
+
+  const deleteList = (id) => act(async () => { await ctx.deleteTaskList(id); });
+  const deleteListExpectingError = async (id) => {
+    let error;
+    await act(async () => {
+      try { await ctx.deleteTaskList(id); } catch (e) { error = e; }
+    });
+    return error;
+  };
+  const taskReads = (listId) => getDocs.mock.calls.filter(([ref]) => ref.path === `${LISTS}/${listId}/tasks`).length;
+
+  test('deletes every task and then the list document in one batch', async () => {
+    await renderWithLists({ activeId: 'list2', tasks: { list2: makeTasks(2) } });
+    await deleteList('list2');
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0].deleted).toEqual([
+      `${LISTS}/list2/tasks/t0`,
+      `${LISTS}/list2/tasks/t1`,
+      `${LISTS}/list2`, // list document last
+    ]);
+    expect(batches[0].commit).toHaveBeenCalledTimes(1);
+    expect(ctx.taskLists.map((l) => l.id)).toEqual(['list1', 'list3']);
+  });
+
+  test('deleting the active list selects the most recently active remaining list', async () => {
+    await renderWithLists({ activeId: 'list2', tasks: { list2: makeTasks(1) } });
+    await deleteList('list2');
+    expect(ctx.activeTaskListId).toBe('list3');
+    expect(localStorage.getItem('lastActiveTaskList')).toBe('list3');
+  });
+
+  test('falls back to the Default Task List when it is the only list left', async () => {
+    await renderWithLists({
+      lists: [{ id: 'list1', name: 'Default Task List' }, { id: 'list2', name: 'Work' }],
+      activeId: 'list2',
+    });
+    await deleteList('list2');
+    expect(ctx.activeTaskListId).toBe('list1');
+  });
+
+  test('deleting an inactive, empty list leaves the active list alone', async () => {
+    await renderWithLists({ activeId: 'list2', tasks: { list2: makeTasks(3) } });
+    await deleteList('list3');
+    expect(batches).toHaveLength(1);
+    expect(batches[0].deleted).toEqual([`${LISTS}/list3`]);
+    expect(ctx.activeTaskListId).toBe('list2');
+    expect(ctx.tasks).toHaveLength(3);
+  });
+
+  test('splits large lists into batches of at most 500, with the list document in the last', async () => {
+    await renderWithLists({ tasks: { list2: makeTasks(600) } });
+    await deleteList('list2');
+    expect(batches.map((b) => b.deleted.length)).toEqual([500, 101]);
+    expect(batches[0].deleted).not.toContain(`${LISTS}/list2`);
+    expect(batches[1].deleted[100]).toBe(`${LISTS}/list2`);
+  });
+
+  test('never touches lastActivityAt or the other lists', async () => {
+    await renderWithLists({ activeId: 'list2', tasks: { list2: makeTasks(1) } });
+    const otherLists = ctx.taskLists.filter((l) => l.id !== 'list2');
+    await deleteList('list2');
+    expect(updateDoc).not.toHaveBeenCalled();
+    expect(ctx.taskLists).toEqual(otherLists);
+  });
+
+  test('refuses to delete the Default Task List', async () => {
+    await renderWithLists();
+    const error = await deleteListExpectingError('list1');
+    expect(error.userMessage).toMatch(/Default Task List can't be deleted/);
+    expect(writeBatch).not.toHaveBeenCalled();
+    expect(ctx.taskLists).toHaveLength(3);
+  });
+
+  test('refuses while a new task in the active list is still being saved', async () => {
+    await renderWithLists({ activeId: 'list2' });
+    addDoc.mockImplementation(() => new Promise(() => {})); // never finishes
+    act(() => {
+      ctx.addTask({ id: 'temp-9', name: 'Saving', impact: 'Medium', time: '1 Hour', createdAt: new Date() });
+    });
+    const error = await deleteListExpectingError('list2');
+    expect(error.userMessage).toMatch(/still saving a new task/);
+    expect(writeBatch).not.toHaveBeenCalled();
+  });
+
+  test('a failed commit keeps the list, keeps it active, and refreshes its tasks', async () => {
+    await renderWithLists({ activeId: 'list2', tasks: { list2: makeTasks(2) } });
+    mockBatches(async () => { throw new Error('permission-denied'); });
+    const readsBefore = taskReads('list2');
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const error = await deleteListExpectingError('list2');
+
+    expect(error.message).toBe('permission-denied');
+    expect(ctx.taskLists.map((l) => l.id)).toEqual(['list1', 'list2', 'list3']);
+    expect(ctx.activeTaskListId).toBe('list2');
+    // The deletion's own read, then at least one refresh of what's left
+    await waitFor(() => expect(taskReads('list2')).toBeGreaterThanOrEqual(readsBefore + 2));
+    console.error.mockRestore();
+  });
+
+  test('a failed read deletes nothing and keeps the list', async () => {
+    await renderWithLists({ activeId: 'list2' });
+    getDocs.mockRejectedValueOnce(new Error('offline'));
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const error = await deleteListExpectingError('list3');
+
+    expect(error.message).toBe('offline');
+    expect(writeBatch).not.toHaveBeenCalled();
+    expect(ctx.taskLists.map((l) => l.id)).toContain('list3');
+    console.error.mockRestore();
+  });
+
+  test('a failure partway through a large deletion keeps the list document for a retry', async () => {
+    await renderWithLists({ tasks: { list2: makeTasks(600) } });
+    mockBatches(async (index) => { if (index === 1) throw new Error('network'); });
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await deleteListExpectingError('list2');
+
+    expect(batches[0].commit).toHaveBeenCalled();
+    expect(batches[0].deleted).not.toContain(`${LISTS}/list2`); // only tasks were committed
+    expect(ctx.taskLists.map((l) => l.id)).toContain('list2');
+    console.error.mockRestore();
+  });
+
+  test('login ignores a remembered list that no longer exists', async () => {
+    localStorage.setItem('lastActiveTaskList', 'deleted-elsewhere');
+    await renderWithLists();
+    expect(ctx.activeTaskListId).toBe('list1');
+  });
+
+  test('creating a journal with the reserved Default name is refused', async () => {
+    await renderWithLists();
+    await act(async () => { await ctx.createTaskList('  dEfAuLt TaSk LiSt  '); });
+    expect(addDoc).not.toHaveBeenCalled();
+    expect(ctx.taskLists).toHaveLength(3);
   });
 });

@@ -12,9 +12,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Journal, { JOURNAL_WIDTH, JOURNAL_HEIGHT } from './Journal';
 import JournalLibrary from './JournalLibrary';
+import DeleteJournalDialog from './DeleteJournalDialog';
 import { useTasks } from '../context/TasksContext';
 import { byMostRecentActivity, toMillis } from '../utils/taskListSort';
-import { hashString, coverColor, coverRotation, isOnDesk } from '../utils/journals';
+import {
+  hashString, coverColor, coverRotation, isOnDesk, isReservedJournalName, DEFAULT_TASK_LIST_NAME,
+} from '../utils/journals';
 import './Desk.css';
 
 export const NARROW_SCREEN_QUERY = '(max-width: 640px)';
@@ -59,9 +62,11 @@ function useMediaQuery(query) {
 function NewJournalForm({ onCreate }) {
   const [isNaming, setIsNaming] = useState(false);
   const [name, setName] = useState('');
+  const [error, setError] = useState(null);
 
   const close = () => {
     setName('');
+    setError(null);
     setIsNaming(false);
   };
 
@@ -79,6 +84,10 @@ function NewJournalForm({ onCreate }) {
       onSubmit={(e) => {
         e.preventDefault();
         const trimmedName = name.trim();
+        if (isReservedJournalName(trimmedName)) {
+          setError(`“${DEFAULT_TASK_LIST_NAME}” is reserved for your system journal. Please choose another name.`);
+          return;
+        }
         if (trimmedName) onCreate(trimmedName);
         close();
       }}
@@ -86,20 +95,26 @@ function NewJournalForm({ onCreate }) {
       <input
         type="text"
         aria-label="New journal name"
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? 'new-journal-error' : undefined}
         placeholder="Name your journal"
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => { setName(e.target.value); setError(null); }}
         onKeyDown={(e) => { if (e.key === 'Escape') close(); }}
         onBlur={() => { if (!name.trim()) close(); }}
         autoFocus
       />
       <button type="submit" className="desk-action">Add</button>
+      {error && <p id="new-journal-error" className="new-journal-error" role="alert">{error}</p>}
     </form>
   );
 }
 
 function Desk({ onOpenJournal }) {
-  const { taskLists = [], createTaskList, updateTaskListPosition, setTaskListOnDesk } = useTasks();
+  const {
+    taskLists = [], createTaskList, updateTaskListPosition, setTaskListOnDesk, deleteTaskList, defaultTaskListId,
+  } = useTasks();
+  const [journalToDelete, setJournalToDelete] = useState(null);
   const isNarrow = useMediaQuery(NARROW_SCREEN_QUERY);
   const deskRef = useRef(null);
   const libraryButtonRef = useRef(null);
@@ -151,13 +166,25 @@ function Desk({ onOpenJournal }) {
     libraryButtonRef.current?.focus();
   }, []);
 
+  // The system Default Task List is never offered for deletion (checked by ID and, while that's
+  // still loading, by name). deleteTaskList enforces the same rule.
+  const canDelete = (list) =>
+    Boolean(defaultTaskListId) && list.id !== defaultTaskListId && !isReservedJournalName(list.name);
+
   const journalProps = (list) => ({
     name: list.name,
     color: coverColor(list.id),
     rotation: coverRotation(list.id),
     onOpen: () => onOpenJournal(list.id),
     onPutAway: () => setTaskListOnDesk(list.id, false),
+    onDelete: canDelete(list) ? () => setJournalToDelete(list) : undefined,
   });
+
+  const closeDeleteDialog = useCallback(() => setJournalToDelete(null), []);
+  const confirmDelete = async () => {
+    await deleteTaskList(journalToDelete.id); // throws on failure; the dialog shows the error
+    setJournalToDelete(null);
+  };
 
   const emptyDeskMessage = (
     <p className="desk-empty">
@@ -210,7 +237,22 @@ function Desk({ onOpenJournal }) {
         </div>
       )}
 
-      {isLibraryOpen && <JournalLibrary onClose={closeLibrary} onOpenJournal={onOpenJournal} />}
+      {isLibraryOpen && (
+        <JournalLibrary
+          onClose={closeLibrary}
+          onOpenJournal={onOpenJournal}
+          canDelete={canDelete}
+          onDelete={setJournalToDelete}
+        />
+      )}
+
+      {journalToDelete && (
+        <DeleteJournalDialog
+          journalName={journalToDelete.name}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        />
+      )}
     </section>
   );
 }
