@@ -28,6 +28,9 @@ beforeEach(() => {
     setActiveTaskListId: jest.fn(),
     createTaskList: jest.fn(),
     markTaskListPickedUp: jest.fn(),
+    takeDownTaskList: jest.fn(),
+    undo: jest.fn(),
+    redo: jest.fn(),
   };
   useTasks.mockImplementation(() => tasksContext);
 });
@@ -117,4 +120,72 @@ test('logging out and back in returns to the desk', () => {
   useAuth.mockReturnValue({ currentUser: user });
   rerender(<App />);
   expect(isOnDesk()).toBe(true);
+});
+
+describe('undo/redo shortcuts', () => {
+  const press = (target, init) => fireEvent.keyDown(target, init);
+
+  test('Ctrl+Z undoes; Ctrl+Shift+Z and Ctrl+Y redo; ⌘ works on Mac', () => {
+    useAuth.mockReturnValue({ currentUser: user });
+    render(<App />);
+    press(document.body, { key: 'z', ctrlKey: true });
+    press(document.body, { key: 'z', metaKey: true });
+    expect(tasksContext.undo).toHaveBeenCalledTimes(2);
+    press(document.body, { key: 'Z', ctrlKey: true, shiftKey: true });
+    press(document.body, { key: 'y', ctrlKey: true });
+    press(document.body, { key: 'z', metaKey: true, shiftKey: true });
+    expect(tasksContext.redo).toHaveBeenCalledTimes(3);
+  });
+
+  test('plain Z, Alt combinations, and other shortcuts do nothing', () => {
+    useAuth.mockReturnValue({ currentUser: user });
+    render(<App />);
+    press(document.body, { key: 'z' });
+    press(document.body, { key: 'z', ctrlKey: true, altKey: true });
+    press(document.body, { key: 's', ctrlKey: true });
+    expect(tasksContext.undo).not.toHaveBeenCalled();
+    expect(tasksContext.redo).not.toHaveBeenCalled();
+  });
+
+  test('typing in a text field keeps the browser’s own text undo', () => {
+    useAuth.mockReturnValue({ currentUser: user });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '+ New journal' }));
+    const input = screen.getByRole('textbox', { name: 'New journal name' });
+    const notPrevented = press(input, { key: 'z', ctrlKey: true });
+    expect(notPrevented).toBe(true);
+    expect(tasksContext.undo).not.toHaveBeenCalled();
+  });
+
+  test('checkboxes and dropdowns do not block undo', () => {
+    useAuth.mockReturnValue({ currentUser: user });
+    render(<App />);
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    const select = document.createElement('select');
+    document.body.append(checkbox, select);
+    press(checkbox, { key: 'z', ctrlKey: true });
+    press(select, { key: 'z', ctrlKey: true });
+    expect(tasksContext.undo).toHaveBeenCalledTimes(2);
+    checkbox.remove();
+    select.remove();
+  });
+
+  test('nothing happens while a confirmation dialog is open', () => {
+    useAuth.mockReturnValue({ currentUser: user });
+    render(<App />);
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'alertdialog');
+    document.body.append(dialog);
+    press(document.body, { key: 'z', ctrlKey: true });
+    expect(tasksContext.undo).not.toHaveBeenCalled();
+    dialog.remove();
+  });
+
+  test('guests can undo too', () => {
+    useAuth.mockReturnValue({ currentUser: null });
+    render(<App />);
+    press(document.body, { key: 'z', ctrlKey: true });
+    expect(tasksContext.undo).toHaveBeenCalledTimes(1);
+  });
 });

@@ -70,7 +70,7 @@ function NewJournalForm({ onCreate }) {
 }
 
 function Desk({ onOpenJournal }) {
-  const { taskLists = [], createTaskList, deleteTaskList, defaultTaskListId, markTaskListPickedUp } = useTasks();
+  const { taskLists = [], createTaskList, deleteTaskList, defaultTaskListId, takeDownTaskList } = useTasks();
   const [journalToDelete, setJournalToDelete] = useState(null);
   const [arrivedJournalId, setArrivedJournalId] = useState(null);
   const deskRef = useRef(null);
@@ -82,7 +82,7 @@ function Desk({ onOpenJournal }) {
 
   // Taking a journal down from the shelf puts it on the desk without opening it
   const takeDown = (taskListId) => {
-    markTaskListPickedUp(taskListId);
+    takeDownTaskList(taskListId);
     setArrivedJournalId(taskListId);
   };
 

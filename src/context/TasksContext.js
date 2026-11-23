@@ -7,12 +7,19 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../firebaseConfig'; // Adjust the import path as necessary
-import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, getDocs, doc, query, where, serverTimestamp, writeBatch, setDoc, deleteField } from 'firebase/firestore';
 import { byMostRecentActivity } from '../utils/taskListSort';
 import { isReservedJournalName } from '../utils/journals';
 
 // Firestore allows at most 500 operations per write batch
 const FIRESTORE_BATCH_LIMIT = 500;
+
+// How many actions undo can step back through
+const UNDO_LIMIT = 100;
+
+// Firestore rejects undefined; restoring a field that didn't exist before means removing it
+const forFirestore = (fields) =>
+    Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value === undefined ? deleteField() : value]));
 
 // Create a new Context object. This will be used to provide and consume the tasks state throughout your app.
 const TasksContext = createContext();
@@ -34,6 +41,16 @@ export const TasksProvider = ({ children, userId }) => {
     // Edits made to a task while its first Firestore save is in flight (it still has a "temp-" ID).
     // Keyed by temp ID; applied once the task gets its Firestore ID. See syncTaskWithFirestore.
     const pendingEditsRef = useRef({});
+
+    // Undo/redo history for this session (see the "Undo and redo" section below).
+    // Entries run later, so they read the current tasks and active list through these refs.
+    const historyRef = useRef({ past: [], future: [] });
+    const historyQueueRef = useRef(Promise.resolve()); // undo/redo steps run one at a time, in order
+    const syncedIdsRef = useRef({}); // temp ID -> Firestore ID, for tasks saved this session
+    const currentTasksRef = useRef(tasks);
+    currentTasksRef.current = tasks;
+    const activeTaskListIdRef = useRef(activeTaskListId);
+    activeTaskListIdRef.current = activeTaskListId;
 
     /**
     * Utility Functions
@@ -70,27 +87,33 @@ export const TasksProvider = ({ children, userId }) => {
     // Record meaningful planning activity on a task list (a task was added, or a task's impact/time changed).
     // Task lists are sorted by this in the dropdown. Local state updates immediately; the Firestore write
     // uses the server's clock so ordering is consistent across devices.
+    // Returns the local time it recorded, so undo/redo can restore it.
     const markTaskListActive = useCallback((taskListId) => {
-        if (!taskListId) return;
+        if (!taskListId) return undefined;
+        const now = new Date();
         setTaskLists(currentLists =>
-            currentLists.map(list => list.id === taskListId ? { ...list, lastActivityAt: new Date() } : list)
+            currentLists.map(list => list.id === taskListId ? { ...list, lastActivityAt: now } : list)
         );
-        if (!userId) return;
+        if (!userId) return now;
         updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), { lastActivityAt: serverTimestamp() })
             .catch(error => console.error("Error updating task list activity:", error));
+        return now;
     }, [userId]);
 
     // Record that a journal was picked up: taken down from the shelf, or opened. The desk shows the journals used most
     // recently (picked up or planned in), so this is what brings a shelved journal down onto the desk.
     // It isn't planning activity, so lastActivityAt (and the dropdown's order) is left alone.
+    // Returns the local time it recorded, so undo/redo can restore it.
     const markTaskListPickedUp = useCallback((taskListId) => {
-        if (!taskListId) return;
+        if (!taskListId) return undefined;
+        const now = new Date();
         setTaskLists(currentLists =>
-            currentLists.map(list => list.id === taskListId ? { ...list, lastPickedUpAt: new Date() } : list)
+            currentLists.map(list => list.id === taskListId ? { ...list, lastPickedUpAt: now } : list)
         );
-        if (!userId) return;
+        if (!userId) return now;
         updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), { lastPickedUpAt: serverTimestamp() })
             .catch(error => console.error("Error recording that a task list was picked up:", error));
+        return now;
     }, [userId]);
 
     const syncTaskWithFirestore = useCallback(async (task) => {
@@ -106,6 +129,7 @@ export const TasksProvider = ({ children, userId }) => {
             // Add the task to Firestore
             const tasksRef = collection(db, `users/${userId}/taskLists/${taskListToUse}/tasks`);
             const docRef = await addDoc(tasksRef, taskForFirestore); // Add task to Firestore
+            syncedIdsRef.current[tempId] = docRef.id; // undo/redo entries recorded with the temp ID find it by this
             // Swap tempId for the Firestore ID in local state, keeping any edits made while addDoc was in flight
             setTasks(currentTasks =>
                 currentTasks.map(t => t.id === tempId ? { ...t, id: docRef.id } : t)
@@ -303,6 +327,118 @@ export const TasksProvider = ({ children, userId }) => {
 
 
     /**
+    * Undo and redo
+    * -------------
+    * Each undoable action records an entry { taskListId, undo, redo } when it happens. Undo steps back
+    * through the session's history and redo steps forward again; a new action clears the redo steps.
+    * History is per session (cleared on login/logout) and only kept in memory.
+    *
+    * Entries use the low-level helpers below rather than the public actions, so replaying a step
+    * doesn't record a new one, and doesn't count as fresh planning activity: activity and pick-up
+    * times are put back to what they were. A task in a list that isn't open is changed in Firestore
+    * only; it shows up when that list is opened.
+    */
+
+    const resolveTaskId = (taskId) => syncedIdsRef.current[taskId] || taskId;
+    const isListShowing = (taskListId) => !userId || taskListId === activeTaskListIdRef.current;
+    const taskDocRef = (taskListId, taskId) => doc(db, `users/${userId}/taskLists/${taskListId}/tasks`, taskId);
+
+    const writeTaskFields = async (taskListId, taskId, fields) => {
+        const id = resolveTaskId(taskId);
+        if (isListShowing(taskListId)) {
+            setTasks(currentTasks => currentTasks.map(task => task.id === id ? { ...task, ...fields } : task));
+        }
+        if (!userId) return;
+        if (id.startsWith("temp-")) { // still being saved for the first time; applied once it has an ID
+            pendingEditsRef.current[id] = { ...pendingEditsRef.current[id], ...fields };
+            return;
+        }
+        await updateDoc(taskDocRef(taskListId, id), forFirestore(fields));
+    };
+
+    const removeTask = async (taskListId, taskId) => {
+        const id = resolveTaskId(taskId);
+        if (isListShowing(taskListId)) setTasks(currentTasks => currentTasks.filter(task => task.id !== id));
+        if (userId) await deleteDoc(taskDocRef(taskListId, id));
+    };
+
+    // Puts a task back with its original ID and fields, at its original place in the list
+    const restoreTask = async (taskListId, task, index) => {
+        const restored = { ...task, id: resolveTaskId(task.id) };
+        if (isListShowing(taskListId)) {
+            setTasks(currentTasks => currentTasks.some(t => t.id === restored.id) ? currentTasks : [
+                ...currentTasks.slice(0, index), restored, ...currentTasks.slice(index),
+            ]);
+        }
+        if (userId) await setDoc(taskDocRef(taskListId, restored.id), forFirestore(restored));
+    };
+
+    // Sets lastActivityAt or lastPickedUpAt back to a recorded value (undefined removes it)
+    const setTaskListTime = async (taskListId, field, value) => {
+        setTaskLists(currentLists =>
+            currentLists.map(list => list.id === taskListId ? { ...list, [field]: value } : list)
+        );
+        if (userId) await updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), forFirestore({ [field]: value }));
+    };
+
+    const recordUndo = (entry) => {
+        const history = historyRef.current;
+        history.past.push(entry);
+        if (history.past.length > UNDO_LIMIT) history.past.shift();
+        history.future = [];
+    };
+
+    const fetchTasksRef = useRef(fetchTasks);
+    fetchTasksRef.current = fetchTasks;
+
+    // Moves one entry between the stacks. An entry returns false when it can't run yet (a new task
+    // still saving), leaving history unchanged. If a step fails, it's dropped and the open list is
+    // reloaded, since the local state may no longer match Firestore.
+    const stepHistory = useCallback((from, to, method) => {
+        historyQueueRef.current = historyQueueRef.current.then(async () => {
+            const history = historyRef.current;
+            const entry = history[from].pop();
+            if (!entry) return;
+            try {
+                const result = await entry[method]();
+                if (result === false) {
+                    history[from].push(entry);
+                    return;
+                }
+                history[to].push(entry);
+            } catch (error) {
+                console.error(`Error during ${method}:`, error);
+                fetchTasksRef.current();
+            }
+        });
+        return historyQueueRef.current;
+    }, []);
+
+    const undo = useCallback(() => stepHistory('past', 'future', 'undo'), [stepHistory]);
+    const redo = useCallback(() => stepHistory('future', 'past', 'redo'), [stepHistory]);
+
+    const clearHistory = useCallback(() => {
+        historyRef.current = { past: [], future: [] };
+        syncedIdsRef.current = {};
+    }, []);
+
+    // A new session (login or logout) starts with no history
+    useEffect(() => { clearHistory(); }, [userId, clearHistory]);
+
+    // Take a journal down from the shelf onto the desk (undoable)
+    const takeDownTaskList = (taskListId) => {
+        const before = taskLists.find(list => list.id === taskListId)?.lastPickedUpAt;
+        const after = markTaskListPickedUp(taskListId);
+        if (!after) return;
+        recordUndo({
+            taskListId,
+            undo: () => setTaskListTime(taskListId, 'lastPickedUpAt', before),
+            redo: () => setTaskListTime(taskListId, 'lastPickedUpAt', after),
+        });
+    };
+
+
+    /**
     * Task List Management Functions
     * ------------------------------
     * These functions handle creating, fetching, and deleting task lists.
@@ -372,6 +508,10 @@ export const TasksProvider = ({ children, userId }) => {
         }
 
         setTaskLists(currentLists => currentLists.filter(list => list.id !== taskListId));
+        // Undoing an earlier step in this list would recreate its tasks inside a deleted list
+        const history = historyRef.current;
+        history.past = history.past.filter(entry => entry.taskListId !== taskListId);
+        history.future = history.future.filter(entry => entry.taskListId !== taskListId);
         if (taskListId === activeTaskListId) {
             const [nextList] = taskLists.filter(list => list.id !== taskListId).sort(byMostRecentActivity);
             setActiveTaskListId(nextList?.id || defaultTaskListId);
@@ -407,9 +547,28 @@ export const TasksProvider = ({ children, userId }) => {
         // Add task to local state
         setTasks((currentTasks) => [...currentTasks, taskWithDetails]);
 
+        // Same list syncTaskWithFirestore saves to (guests have no list)
+        const taskListId = userId ? (taskWithDetails.taskListId || defaultTaskListId) : null;
+        const activityBefore = taskLists.find(list => list.id === taskListId)?.lastActivityAt;
+        const activityAfter = userId ? markTaskListActive(taskListId) : undefined;
+        let removedTask = taskWithDetails; // its latest state, captured when the add is undone
+        recordUndo({
+            taskListId,
+            undo: async () => {
+                if (userId && resolveTaskId(taskWithDetails.id).startsWith("temp-")) return false; // still saving
+                const id = resolveTaskId(taskWithDetails.id);
+                removedTask = currentTasksRef.current.find(task => task.id === id) || removedTask;
+                await removeTask(taskListId, id);
+                if (activityAfter) await setTaskListTime(taskListId, 'lastActivityAt', activityBefore);
+            },
+            redo: async () => {
+                await restoreTask(taskListId, removedTask, currentTasksRef.current.length);
+                if (activityAfter) await setTaskListTime(taskListId, 'lastActivityAt', activityAfter);
+            },
+        });
+
         // Sync with Firestore if logged in
         if (userId) {
-            markTaskListActive(taskWithDetails.taskListId || defaultTaskListId); // Same list syncTaskWithFirestore saves to
             console.log("User found, syncing new task. Logged in with userId:", userId);
             console.log("Current activeTaskListId before syncing:", activeTaskListId);
             const syncedTask = await syncTaskWithFirestore(taskWithDetails); // Use the existing sync function
@@ -441,16 +600,34 @@ export const TasksProvider = ({ children, userId }) => {
             ('impact' in updatedFields && updatedFields.impact !== currentTask.impact) ||
             ('time' in updatedFields && updatedFields.time !== currentTask.time)
         );
-        if (isPlanningChange) markTaskListActive(activeTaskListId);
-
-        // Guests: local state only. Their tasks are synced to Firestore on login (handlePreLoginTasks).
-        if (!userId) return;
+        const taskListId = userId ? activeTaskListId : null;
+        const activityBefore = taskLists.find(list => list.id === taskListId)?.lastActivityAt;
+        const activityAfter = isPlanningChange ? markTaskListActive(activeTaskListId) : undefined;
 
         // Only write the fields that changed, so overlapping writes can't overwrite each other's fields
         const changes = { ...updatedFields };
         if (currentTask && ('impact' in updatedFields || 'time' in updatedFields)) {
             changes.priority = applyUpdate(currentTask).priority;
         }
+
+        // Undo puts back the previous value of each written field (re-saving an unchanged value isn't a step)
+        if (currentTask && Object.keys(changes).some(key => changes[key] !== currentTask[key])) {
+            const previous = Object.fromEntries(Object.keys(changes).map(key => [key, currentTask[key]]));
+            recordUndo({
+                taskListId,
+                undo: async () => {
+                    await writeTaskFields(taskListId, taskId, previous);
+                    if (activityAfter) await setTaskListTime(taskListId, 'lastActivityAt', activityBefore);
+                },
+                redo: async () => {
+                    await writeTaskFields(taskListId, taskId, changes);
+                    if (activityAfter) await setTaskListTime(taskListId, 'lastActivityAt', activityAfter);
+                },
+            });
+        }
+
+        // Guests: local state only. Their tasks are synced to Firestore on login (handlePreLoginTasks).
+        if (!userId) return;
 
         // Task is still being saved to Firestore for the first time: hold the edit until it has a real ID
         if (taskId.startsWith("temp-")) {
@@ -478,6 +655,18 @@ export const TasksProvider = ({ children, userId }) => {
 
     // Delete Task Function
     const deleteTask = async (taskId) => {
+        // Undo recreates the task with the same ID and fields. A logged-in task that's still being saved
+        // for the first time has no Firestore ID to recreate yet, so that deletion isn't undoable.
+        const index = tasks.findIndex(task => task.id === taskId);
+        if (index !== -1 && !(userId && taskId.startsWith("temp-"))) {
+            const deletedTask = tasks[index];
+            const taskListId = userId ? activeTaskListId : null;
+            recordUndo({
+                taskListId,
+                undo: () => restoreTask(taskListId, deletedTask, index),
+                redo: () => removeTask(taskListId, deletedTask.id),
+            });
+        }
         try {
             // Step 1: Update the local state to remove the task
             setTasks(currentTasks => currentTasks.filter(task => task.id !== taskId));
@@ -515,7 +704,10 @@ export const TasksProvider = ({ children, userId }) => {
             createTaskList,
             deleteTaskList,
             defaultTaskListId,
-            markTaskListPickedUp
+            markTaskListPickedUp,
+            takeDownTaskList,
+            undo,
+            redo
         }}>
             {children} {/* This represents any child components that will have access to the tasks context. */}
         </TasksContext.Provider>

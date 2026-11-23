@@ -1,5 +1,5 @@
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp, writeBatch, setDoc, deleteField } from 'firebase/firestore';
 import { TasksProvider, useTasks } from './TasksContext';
 import TaskManager from '../components/TaskManager';
 
@@ -15,6 +15,8 @@ jest.mock('firebase/firestore', () => ({
   where: jest.fn(),
   serverTimestamp: jest.fn(),
   writeBatch: jest.fn(),
+  setDoc: jest.fn(),
+  deleteField: jest.fn(),
 }));
 
 // CRA's Jest config resets mocks before each test, so set implementations here
@@ -24,6 +26,8 @@ beforeEach(() => {
   updateDoc.mockResolvedValue();
   deleteDoc.mockResolvedValue();
   serverTimestamp.mockReturnValue('SERVER_TIMESTAMP');
+  setDoc.mockResolvedValue();
+  deleteField.mockReturnValue('DELETE_FIELD');
   localStorage.clear();
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -448,5 +452,277 @@ describe('deleting task lists', () => {
     await act(async () => { await ctx.createTaskList('  dEfAuLt TaSk LiSt  '); });
     expect(addDoc).not.toHaveBeenCalled();
     expect(ctx.taskLists).toHaveLength(3);
+  });
+});
+
+describe('undo and redo', () => {
+  const LISTS = 'users/u1/taskLists';
+  const TASK = `${LISTS}/list1/tasks/t1`;
+  const existingTask = { id: 't1', name: 'Existing', impact: 'Medium', time: '10 Minutes', priority: 'I' };
+  const undo = () => act(async () => { await ctx.undo(); });
+  const redo = () => act(async () => { await ctx.redo(); });
+  const list = (id) => ctx.taskLists.find((l) => l.id === id);
+  const writesTo = (path) => updateDoc.mock.calls.filter(([ref]) => ref.path === path).map(([, fields]) => fields);
+
+  // Logged in; list1 (Default) holds t1, list2 ("Work") holds w1. activeId picks the open list.
+  const renderLoggedIn = async ({ activeId = 'list1', addDocImpl } = {}) => {
+    getDocs.mockImplementation(async (ref) => {
+      if (ref.path === LISTS) {
+        return {
+          docs: [
+            { id: 'list1', data: () => ({ name: 'Default Task List' }) },
+            { id: 'list2', data: () => ({ name: 'Work' }) },
+          ],
+        };
+      }
+      if (ref.path === `${LISTS}/list1/tasks`) return { docs: [{ id: 't1', data: () => existingTask }] };
+      if (ref.path === `${LISTS}/list2/tasks`) {
+        return { docs: [{ id: 'w1', data: () => ({ id: 'w1', name: 'Work task', impact: 'Medium', time: '1 Hour', priority: 'M' }) }] };
+      }
+      return { docs: [] };
+    });
+    if (addDocImpl) addDoc.mockImplementation(addDocImpl);
+    else addDoc.mockResolvedValue({ id: 'new1' });
+    localStorage.setItem('lastActiveTaskList', activeId);
+    render(app('u1'));
+    await waitFor(() => expect(ctx.tasks).toHaveLength(1));
+    // Login can read the open list's tasks twice; let the second read land before the test acts
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(ctx.activeTaskListId).toBe(activeId);
+    updateDoc.mockClear();
+  };
+
+  describe('guests (local only)', () => {
+    test('adding, renaming, completing, and deleting can each be undone and redone', async () => {
+      render(app(undefined));
+      addGuestTask('First');
+      const id = ctx.tasks[0].id;
+      act(() => { ctx.updateTask(id, { name: 'Renamed' }); });
+      act(() => { ctx.toggleTaskDone(id, true); });
+      addGuestTask('Second');
+      act(() => { ctx.deleteTask(id); });
+      expect(ctx.tasks.map((t) => t.name)).toEqual(['Second']);
+
+      await undo(); // delete: back at its original place
+      expect(ctx.tasks.map((t) => t.name)).toEqual(['Renamed', 'Second']);
+      await undo(); // add Second
+      expect(ctx.tasks.map((t) => t.name)).toEqual(['Renamed']);
+      await undo(); // complete
+      expect(ctx.tasks[0].isDone).toBeUndefined();
+      await undo(); // rename
+      expect(ctx.tasks[0].name).toBe('First');
+      await undo(); // add First
+      expect(ctx.tasks).toHaveLength(0);
+      await undo(); // nothing left: no-op
+      expect(ctx.tasks).toHaveLength(0);
+
+      for (let i = 0; i < 5; i++) await redo();
+      expect(ctx.tasks.map((t) => [t.name, t.isDone])).toEqual([['Second', undefined]]);
+      await redo(); // nothing left to redo
+      expect(ctx.tasks).toHaveLength(1);
+
+      expect(addDoc).not.toHaveBeenCalled();
+      expect(updateDoc).not.toHaveBeenCalled();
+      expect(setDoc).not.toHaveBeenCalled();
+      expect(deleteDoc).not.toHaveBeenCalled();
+    });
+
+    test('a new action clears the redo steps', async () => {
+      render(app(undefined));
+      addGuestTask('Task');
+      const id = ctx.tasks[0].id;
+      act(() => { ctx.updateTask(id, { name: 'One' }); });
+      await undo();
+      act(() => { ctx.updateTask(id, { name: 'Two' }); });
+      await redo();
+      expect(ctx.tasks[0].name).toBe('Two');
+    });
+
+    test('re-saving an unchanged value is not a step', async () => {
+      render(app(undefined));
+      addGuestTask('Task');
+      act(() => { ctx.updateTask(ctx.tasks[0].id, { impact: 'Monumental' }); }); // already Monumental
+      await undo(); // undoes the add
+      expect(ctx.tasks).toHaveLength(0);
+    });
+
+    test('history is cleared when logging in', async () => {
+      const { rerender } = render(app(undefined));
+      addGuestTask('Guest task');
+      getDocs.mockResolvedValue({ docs: [{ id: 'list1', data: () => ({ name: 'Default Task List' }) }] });
+      addDoc.mockResolvedValue({ id: 'doc1' });
+      rerender(app('u1'));
+      await waitFor(() => expect(addDoc).toHaveBeenCalledTimes(1));
+      deleteDoc.mockClear();
+      await undo();
+      expect(deleteDoc).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('logged in', () => {
+    test('undoing a rename writes the old name back; redo writes the new one', async () => {
+      await renderLoggedIn();
+      await act(async () => { await ctx.updateTask('t1', { name: 'Renamed' }); });
+      updateDoc.mockClear();
+
+      await undo();
+      expect(ctx.tasks[0].name).toBe('Existing');
+      expect(writesTo(TASK)).toEqual([{ name: 'Existing' }]);
+
+      await redo();
+      expect(ctx.tasks[0].name).toBe('Renamed');
+      expect(writesTo(TASK)).toEqual([{ name: 'Existing' }, { name: 'Renamed' }]);
+    });
+
+    test('undoing an impact change restores the priority and the previous activity time', async () => {
+      await renderLoggedIn();
+      await act(async () => { await ctx.updateTask('t1', { impact: 'Minimal' }); });
+      const activityAfter = list('list1').lastActivityAt;
+      expect(activityAfter).toBeInstanceOf(Date);
+      updateDoc.mockClear();
+
+      await undo();
+      expect(ctx.tasks[0]).toMatchObject({ impact: 'Medium', priority: 'I' });
+      expect(writesTo(TASK)).toEqual([{ impact: 'Medium', priority: 'I' }]);
+      expect(list('list1').lastActivityAt).toBeUndefined(); // there was none before
+      expect(writesTo(`${LISTS}/list1`)).toEqual([{ lastActivityAt: 'DELETE_FIELD' }]);
+
+      await redo();
+      expect(ctx.tasks[0]).toMatchObject({ impact: 'Minimal', priority: 'K' });
+      expect(list('list1').lastActivityAt).toBe(activityAfter);
+      expect(writesTo(`${LISTS}/list1`)).toEqual([{ lastActivityAt: 'DELETE_FIELD' }, { lastActivityAt: activityAfter }]);
+    });
+
+    test('undoing a completion removes the done flag it added', async () => {
+      await renderLoggedIn();
+      await act(async () => { await ctx.toggleTaskDone('t1', true); });
+      updateDoc.mockClear();
+      await undo();
+      expect(ctx.tasks[0].isDone).toBeUndefined();
+      expect(writesTo(TASK)).toEqual([{ isDone: 'DELETE_FIELD' }]);
+    });
+
+    test('undoing a delete recreates the task with the same ID and fields', async () => {
+      await renderLoggedIn();
+      await act(async () => { await ctx.deleteTask('t1'); });
+      expect(ctx.tasks).toHaveLength(0);
+
+      await undo();
+      expect(ctx.tasks).toEqual([existingTask]);
+      expect(setDoc).toHaveBeenCalledWith({ path: TASK }, existingTask);
+
+      deleteDoc.mockClear();
+      await redo();
+      expect(ctx.tasks).toHaveLength(0);
+      expect(deleteDoc).toHaveBeenCalledWith({ path: TASK });
+    });
+
+    test('undoing an add deletes the saved task and restores activity; redo recreates it', async () => {
+      await renderLoggedIn();
+      await act(async () => {
+        await ctx.addTask({ id: 'temp-a', name: 'New', impact: 'Minimal', time: '10 Minutes', createdAt: new Date() });
+      });
+      expect(ctx.tasks.map((t) => t.id)).toEqual(['t1', 'new1']);
+      updateDoc.mockClear();
+
+      await undo();
+      expect(ctx.tasks.map((t) => t.id)).toEqual(['t1']);
+      expect(deleteDoc).toHaveBeenCalledWith({ path: `${LISTS}/list1/tasks/new1` });
+      expect(list('list1').lastActivityAt).toBeUndefined();
+
+      await redo();
+      expect(ctx.tasks.map((t) => t.id)).toEqual(['t1', 'new1']);
+      expect(setDoc).toHaveBeenCalledWith(
+        { path: `${LISTS}/list1/tasks/new1` },
+        expect.objectContaining({ id: 'new1', name: 'New', taskListId: 'list1' })
+      );
+    });
+
+    test('an add cannot be undone until the task has finished saving', async () => {
+      let finishSave;
+      await renderLoggedIn({
+        addDocImpl: () => new Promise((resolve) => { finishSave = () => resolve({ id: 'new1' }); }),
+      });
+      act(() => {
+        ctx.addTask({ id: 'temp-a', name: 'New', impact: 'Minimal', time: '10 Minutes', createdAt: new Date() });
+      });
+
+      await undo(); // still saving: nothing happens, and the step stays in history
+      expect(ctx.tasks.map((t) => t.name)).toEqual(['Existing', 'New']);
+      expect(deleteDoc).not.toHaveBeenCalled();
+
+      await act(async () => finishSave());
+      await undo();
+      expect(ctx.tasks.map((t) => t.name)).toEqual(['Existing']);
+      expect(deleteDoc).toHaveBeenCalledWith({ path: `${LISTS}/list1/tasks/new1` });
+    });
+
+    test('a change in a list that is not open is undone in Firestore only', async () => {
+      await renderLoggedIn();
+      await act(async () => { await ctx.updateTask('t1', { name: 'Renamed' }); });
+      act(() => { ctx.setActiveTaskListId('list2'); });
+      await waitFor(() => expect(ctx.tasks.map((t) => t.id)).toEqual(['w1']));
+      updateDoc.mockClear();
+
+      await undo();
+      expect(writesTo(TASK)).toEqual([{ name: 'Existing' }]);
+      expect(ctx.tasks.map((t) => t.name)).toEqual(['Work task']); // the open list is untouched
+    });
+
+    test('deleting a journal drops its steps, so undo never recreates tasks inside it', async () => {
+      await renderLoggedIn({ activeId: 'list2' });
+      await act(async () => { await ctx.deleteTask('w1'); });
+      act(() => { ctx.setActiveTaskListId('list1'); });
+      await waitFor(() => expect(ctx.tasks.map((t) => t.id)).toEqual(['t1']));
+      await act(async () => { await ctx.updateTask('t1', { name: 'Renamed' }); });
+
+      writeBatch.mockImplementation(() => ({ delete: jest.fn(), commit: jest.fn(async () => {}) }));
+      await act(async () => { await ctx.deleteTaskList('list2'); });
+
+      await undo(); // the rename in list1
+      expect(ctx.tasks[0].name).toBe('Existing');
+      await undo(); // the delete in list2 was dropped
+      expect(setDoc).not.toHaveBeenCalled();
+    });
+
+    test('taking a journal down can be undone and redone', async () => {
+      await renderLoggedIn();
+      act(() => { ctx.takeDownTaskList('list2'); });
+      const pickedUpAt = list('list2').lastPickedUpAt;
+      expect(pickedUpAt).toBeInstanceOf(Date);
+      updateDoc.mockClear();
+
+      await undo();
+      expect(list('list2').lastPickedUpAt).toBeUndefined();
+      expect(writesTo(`${LISTS}/list2`)).toEqual([{ lastPickedUpAt: 'DELETE_FIELD' }]);
+
+      await redo();
+      expect(list('list2').lastPickedUpAt).toBe(pickedUpAt);
+      expect(writesTo(`${LISTS}/list2`)).toEqual([{ lastPickedUpAt: 'DELETE_FIELD' }, { lastPickedUpAt: pickedUpAt }]);
+    });
+
+    test('opening a journal is not an undo step', async () => {
+      await renderLoggedIn();
+      act(() => { ctx.markTaskListPickedUp('list2'); });
+      updateDoc.mockClear();
+      await undo();
+      expect(updateDoc).not.toHaveBeenCalled();
+      expect(list('list2').lastPickedUpAt).toBeInstanceOf(Date);
+    });
+
+    test('a failed step is dropped and the open list is reloaded', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      await renderLoggedIn();
+      await act(async () => { await ctx.updateTask('t1', { name: 'Renamed' }); });
+      updateDoc.mockRejectedValueOnce(new Error('offline'));
+      const readsBefore = getDocs.mock.calls.length;
+
+      await undo();
+      await waitFor(() => expect(getDocs.mock.calls.length).toBeGreaterThan(readsBefore));
+      await waitFor(() => expect(ctx.tasks[0].name).toBe('Existing')); // reloaded from Firestore
+      await redo(); // the failed step isn't redoable
+      expect(ctx.tasks[0].name).toBe('Existing');
+      console.error.mockRestore();
+    });
   });
 });

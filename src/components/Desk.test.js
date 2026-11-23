@@ -14,14 +14,16 @@ const FakeTasks = createContext(null);
 let clock = 1000;
 function FakeTasksProvider({ initialLists, defaultTaskListId, spies, children }) {
   const [taskLists, setTaskLists] = useState(initialLists);
+  const pickUp = (id) => {
+    clock += 1;
+    setTaskLists((lists) => lists.map((l) => (l.id === id ? { ...l, lastPickedUpAt: timestamp(clock) } : l)));
+  };
   const value = {
     taskLists,
     defaultTaskListId,
     createTaskList: spies.createTaskList,
-    markTaskListPickedUp: (id) => {
-      clock += 1;
-      setTaskLists((lists) => lists.map((l) => (l.id === id ? { ...l, lastPickedUpAt: timestamp(clock) } : l)));
-    },
+    markTaskListPickedUp: pickUp,
+    takeDownTaskList: (id) => { spies.takeDownTaskList(id); pickUp(id); },
     // Like the real context: removes the list only once deletion succeeds; rejects otherwise
     deleteTaskList: async (id) => {
       await spies.deleteTaskList(id);
@@ -37,7 +39,7 @@ function DeskThatOpens({ onOpenJournal }) {
 }
 
 const renderDesk = (taskLists, { defaultTaskListId = 'default-id' } = {}) => {
-  const spies = { createTaskList: jest.fn(), deleteTaskList: jest.fn(async () => {}) };
+  const spies = { createTaskList: jest.fn(), takeDownTaskList: jest.fn(), deleteTaskList: jest.fn(async () => {}) };
   useTasks.mockImplementation(() => useContext(FakeTasks));
   const onOpenJournal = jest.fn();
   render(
@@ -85,9 +87,10 @@ describe('desk and shelf', () => {
   });
 
   test('clicking a spine takes the journal down without opening it; the least recent desk journal is shelved', () => {
-    const { onOpenJournal } = renderDesk(sixLists);
+    const { onOpenJournal, takeDownTaskList } = renderDesk(sixLists);
     fireEvent.click(spine('B'));
     expect(onOpenJournal).not.toHaveBeenCalled();
+    expect(takeDownTaskList).toHaveBeenCalledWith('b'); // the undoable action
     expect(deskNames()).toEqual(['B', 'F', 'E']);
     expect(shelfNames()).toEqual(['D', 'C', 'A']);
   });

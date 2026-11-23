@@ -14,6 +14,7 @@ import { TasksProvider, useTasks } from './context/TasksContext'
 import LogoutButton from './components/LogoutButton';
 import TaskListManager from './components/TaskListManager';
 import Desk from './components/Desk';
+import { useUndoShortcuts } from './utils/useUndoShortcuts';
 
 const LIST_HASH = '#list';
 const viewFromUrl = () => (window.location.hash === LIST_HASH ? 'list' : 'desk');
@@ -31,8 +32,9 @@ function App() {
 }
 
 function AppContent({ currentUser }) {
-  const { tasks, setActiveTaskListId, markTaskListPickedUp } = useTasks();
+  const { tasks, setActiveTaskListId, markTaskListPickedUp, undo, redo } = useTasks();
   const [view, setView] = useState(viewFromUrl);
+  useUndoShortcuts(undo, redo);
 
   // Browser Back/Forward between the desk and an opened list
   useEffect(() => {
