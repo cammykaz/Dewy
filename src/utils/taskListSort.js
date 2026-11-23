@@ -13,3 +13,10 @@ export const toMillis = (value) => {
 export const byMostRecentActivity = (a, b) =>
     toMillis(b.lastActivityAt ?? b.createdAt) - toMillis(a.lastActivityAt ?? a.createdAt) ||
     (a.name || '').localeCompare(b.name || '');
+
+const lastUsedMillis = (list) =>
+    Math.max(toMillis(list.lastActivityAt ?? list.createdAt), toMillis(list.lastPickedUpAt));
+
+// Most recently used first (the desk's order): picked up from the shelf, opened, or planned in.
+export const byMostRecentUse = (a, b) =>
+    lastUsedMillis(b) - lastUsedMillis(a) || (a.name || '').localeCompare(b.name || '');

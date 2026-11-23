@@ -27,7 +27,7 @@ beforeEach(() => {
     ],
     setActiveTaskListId: jest.fn(),
     createTaskList: jest.fn(),
-    updateTaskListPosition: jest.fn(),
+    markTaskListPickedUp: jest.fn(),
   };
   useTasks.mockImplementation(() => tasksContext);
 });
@@ -56,6 +56,7 @@ test('opening a journal shows its task list, and the Desk button returns', async
   render(<App />);
 
   fireEvent.click(screen.getByRole('button', { name: 'Open Work' }));
+  expect(tasksContext.markTaskListPickedUp).toHaveBeenCalledWith('list2');
   expect(tasksContext.setActiveTaskListId).toHaveBeenCalledWith('list2');
   expect(screen.getByText('Task manager')).toBeInTheDocument();
   expect(window.location.hash).toBe('#list');

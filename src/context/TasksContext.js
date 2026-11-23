@@ -80,29 +80,18 @@ export const TasksProvider = ({ children, userId }) => {
             .catch(error => console.error("Error updating task list activity:", error));
     }, [userId]);
 
-    // Merge fields into a task list: local state immediately, then a partial Firestore write
-    const saveTaskListFields = useCallback((taskListId, fields) => {
+    // Record that a journal was picked up: taken down from the shelf, or opened. The desk shows the journals used most
+    // recently (picked up or planned in), so this is what brings a shelved journal down onto the desk.
+    // It isn't planning activity, so lastActivityAt (and the dropdown's order) is left alone.
+    const markTaskListPickedUp = useCallback((taskListId) => {
+        if (!taskListId) return;
         setTaskLists(currentLists =>
-            currentLists.map(list => list.id === taskListId ? { ...list, ...fields } : list)
+            currentLists.map(list => list.id === taskListId ? { ...list, lastPickedUpAt: new Date() } : list)
         );
         if (!userId) return;
-        updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), fields)
-            .catch(error => console.error("Error saving task list fields:", fields, error));
+        updateDoc(doc(db, `users/${userId}/taskLists`, taskListId), { lastPickedUpAt: serverTimestamp() })
+            .catch(error => console.error("Error recording that a task list was picked up:", error));
     }, [userId]);
-
-    // Home desk arrangement. Neither of these is planning activity, so lastActivityAt is left alone.
-
-    // Where a journal sits on the desk: { x, y } are 0–1 fractions of the desk's free space and
-    // z is its stacking order. Called once when a drag ends.
-    const updateTaskListPosition = useCallback((taskListId, deskPosition) => {
-        saveTaskListFields(taskListId, { deskPosition });
-    }, [saveTaskListFields]);
-
-    // Put a journal away in the library (false) or place it back on the desk (true).
-    // Its tasks and saved deskPosition are untouched.
-    const setTaskListOnDesk = useCallback((taskListId, onDesk) => {
-        saveTaskListFields(taskListId, { onDesk });
-    }, [saveTaskListFields]);
 
     const syncTaskWithFirestore = useCallback(async (task) => {
         console.log("🔄 Syncing task:", task);
@@ -526,8 +515,7 @@ export const TasksProvider = ({ children, userId }) => {
             createTaskList,
             deleteTaskList,
             defaultTaskListId,
-            updateTaskListPosition,
-            setTaskListOnDesk
+            markTaskListPickedUp
         }}>
             {children} {/* This represents any child components that will have access to the tasks context. */}
         </TasksContext.Provider>

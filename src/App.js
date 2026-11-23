@@ -31,7 +31,7 @@ function App() {
 }
 
 function AppContent({ currentUser }) {
-  const { tasks, setActiveTaskListId } = useTasks();
+  const { tasks, setActiveTaskListId, markTaskListPickedUp } = useTasks();
   const [view, setView] = useState(viewFromUrl);
 
   // Browser Back/Forward between the desk and an opened list
@@ -48,7 +48,9 @@ function AppContent({ currentUser }) {
     setView('list');
   }, []);
 
+  // Opening a journal keeps it on the desk
   const openJournal = (taskListId) => {
+    markTaskListPickedUp(taskListId);
     setActiveTaskListId(taskListId);
     showList();
   };

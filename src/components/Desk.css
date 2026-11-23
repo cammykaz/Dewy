@@ -1,8 +1,10 @@
 /* Desk.css */
 
-/* Home surface: a minimalist desk with journals resting on it, plus the Journal Library drawer */
+/* Home surface: a bookshelf of spines above a desk with the few journals in use */
 
 .desk-view {
+  --board: #d8cdbb;
+  --spine-text: #f8f3ea;
   max-width: 1100px;
   margin: 0 auto;
   padding-block: 8px 32px;
@@ -13,13 +15,12 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   min-height: 36px;
 }
 
-/* Quiet pill buttons used on the desk and in the library */
-.desk-action,
-.library-item-actions button {
+/* Quiet pill buttons */
+.desk-action {
   padding: 8px 14px;
   border: 1px solid #d6cfc2;
   border-radius: 999px;
@@ -30,19 +31,150 @@
   cursor: pointer;
 }
 
-.desk-action:hover,
-.library-item-actions button:hover {
+.desk-action:hover {
   background-color: #f2ede4;
 }
 
-/* The desk: finite, softly lit, uncluttered */
-.desk {
+.desk-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* ---------- Bookshelf ---------- */
+
+.bookshelf {
+  --slot-height: 176px; /* tallest spine (162px, see spineSize() in journals.js) plus room to pull it out */
+  --board-height: 12px;
+  margin-bottom: 28px;
+}
+
+.shelf-search {
+  display: block;
+  width: min(260px, 100%);
+  box-sizing: border-box;
+  margin: 0 0 10px auto;
+}
+
+/* Spines stand on boards. Each wrapped row lands exactly on the next board of the repeating
+   background, because every slot is one row tall. */
+.shelf-books {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  min-height: calc(var(--slot-height) + var(--board-height));
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 var(--slot-height),
+    var(--board) var(--slot-height) calc(var(--slot-height) + var(--board-height))
+  );
+  filter: drop-shadow(0 3px 2px rgba(40, 30, 20, 0.1));
+}
+
+.shelf-slot {
+  height: calc(var(--slot-height) + var(--board-height));
+  padding-bottom: var(--board-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+}
+
+.spine {
   position: relative;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  min-height: 420px;
+  width: var(--spine-width);
+  height: var(--spine-height);
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 2px 2px 1px 1px;
+  background-color: var(--cover);
+  background-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.14),
+    rgba(255, 255, 255, 0.08) 30%,
+    rgba(0, 0, 0, 0.04) 70%,
+    rgba(0, 0, 0, 0.16)
+  );
+  color: var(--spine-text);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+/* Bands near the head and foot of the spine */
+.spine::before,
+.spine::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+.spine::before { top: 7px; }
+.spine::after { bottom: 6px; }
+
+/* Pull the book out a little */
+.spine:hover,
+.spine:focus-visible {
+  transform: translateY(-6px);
+}
+
+.spine:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 2px;
+}
+
+/* The title is laid out horizontally, then turned a quarter clockwise so it reads top to bottom
+   (like an English bookshelf). Centering the box before rotating puts the text exactly halfway
+   between the front and back covers, which vertical writing-mode doesn't (it hangs from a baseline). */
+.spine-title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--spine-height) - 28px); /* clear of the head and foot bands */
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  transform: translate(-50%, -50%) rotate(90deg);
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 13px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
+.shelf-note {
+  margin: 8px 0 0;
+  padding: 0 12px;
+  color: #8a8073;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 14px;
+}
+
+/* Nothing shelved yet: a bare board with a quiet note resting on it */
+.shelf-empty {
+  display: flex;
+  align-items: flex-end;
+  min-height: 64px;
+  box-sizing: border-box;
+  padding-bottom: calc(var(--board-height) + 6px);
+  background: linear-gradient(var(--board), var(--board)) bottom / 100% var(--board-height) no-repeat;
+  filter: drop-shadow(0 3px 2px rgba(40, 30, 20, 0.1));
+}
+
+.shelf-empty .shelf-note {
+  margin: 0;
+}
+
+/* ---------- Desk ---------- */
+
+.desk {
   border-radius: 18px;
+  padding: clamp(28px, 6vw, 56px) clamp(16px, 4vw, 48px);
   background-color: #ebe5da;
   background-image: radial-gradient(ellipse at 30% 15%, rgba(255, 255, 255, 0.5), transparent 65%);
   box-shadow:
@@ -50,29 +182,51 @@
     0 1px 2px rgba(40, 30, 20, 0.05);
 }
 
+.desk-journals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 132px));
+  justify-content: center;
+  gap: clamp(14px, 6vw, 64px);
+}
+
 .desk-empty {
   margin: 0;
-  padding: 48px 24px;
+  padding: 24px;
   color: #7a7064;
   font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
   font-size: 16px;
   text-align: center;
 }
 
-/* Journal: positioned wrapper (keep width/height in sync with JOURNAL_WIDTH/JOURNAL_HEIGHT in Journal.js) */
+/* ---------- Journal (a cover lying on the desk) ---------- */
+
 .journal {
-  position: absolute;
-  width: 132px;
-  height: 176px;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
   transform: rotate(var(--rotation));
-  transition: transform 0.2s ease;
 }
 
-.journal.is-dragging {
-  transform: rotate(var(--rotation)) scale(1.03);
+/* Just taken down from the shelf: settles onto the desk */
+.journal.is-arriving {
+  animation: journal-arrive 0.35s ease-out;
 }
 
-/* The cover itself: the button that opens and drags the journal */
+@keyframes journal-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-28px) rotate(calc(var(--rotation) - 4deg)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--rotation));
+  }
+}
+
+/* The cover itself: the button that opens the journal */
 .journal-cover {
   position: absolute;
   inset: 0;
@@ -82,16 +236,13 @@
   border: none;
   border-radius: 3px 9px 9px 3px;
   background-color: var(--cover);
-  cursor: grab;
-  touch-action: none; /* let pointer events drag instead of scrolling */
-  user-select: none;
-  -webkit-user-select: none;
+  cursor: pointer;
   font: inherit;
   box-shadow:
     0 1px 1px rgba(30, 22, 14, 0.1),
     0 6px 14px rgba(30, 22, 14, 0.14),
     0 18px 28px -14px rgba(30, 22, 14, 0.3);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 /* Binding along the spine */
@@ -101,7 +252,7 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: 13px;
+  width: 10%;
   border-radius: 3px 0 0 3px;
   background-color: rgba(0, 0, 0, 0.16);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.12);
@@ -121,18 +272,11 @@
 }
 
 .journal-cover:hover {
+  transform: translateY(-2px);
   box-shadow:
     0 1px 1px rgba(30, 22, 14, 0.1),
     0 10px 20px rgba(30, 22, 14, 0.16),
     0 24px 34px -14px rgba(30, 22, 14, 0.32);
-}
-
-.journal.is-dragging .journal-cover {
-  cursor: grabbing;
-  box-shadow:
-    0 2px 2px rgba(30, 22, 14, 0.1),
-    0 16px 30px rgba(30, 22, 14, 0.2),
-    0 32px 44px -16px rgba(30, 22, 14, 0.35);
 }
 
 .journal-cover:focus-visible {
@@ -144,9 +288,9 @@
    so a cut-off line can never show through the plate's padding. */
 .journal-label {
   position: absolute;
-  top: 30px;
-  left: 25px;
-  right: 12px;
+  top: 17%;
+  left: 19%;
+  right: 9%;
   padding: 10px 8px;
   border-radius: 2px;
   background-color: rgba(250, 246, 238, 0.93);
@@ -206,7 +350,6 @@
   outline-offset: 2px;
 }
 
-/* Kept within the journal's footprint so the desk edge never clips it */
 .journal-menu {
   position: absolute;
   top: 28px;
@@ -238,61 +381,26 @@
   outline: none;
 }
 
-/* Narrow screens: a tappable stack of journals */
-.journal-stack {
-  list-style: none;
-  margin: 0;
-  padding: 4px 4px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+/* Destructive action: kept visually apart from Open */
+.journal-menu .journal-menu-delete {
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid #eee7dc;
+  border-radius: 0 0 6px 6px;
+  color: #a33a2c;
 }
 
-.journal-stack .journal {
-  position: relative;
-  width: 100%;
-  height: 72px;
-  transform: rotate(calc(var(--rotation) * 0.3));
-}
+/* ---------- New journal form ---------- */
 
-.journal-stack .journal-cover {
-  cursor: pointer;
-  touch-action: auto;
-}
-
-.journal-stack .journal-label {
-  top: 50%;
-  left: 28px;
-  right: 44px; /* leave room for the menu button */
-  transform: translateY(-50%);
-  text-align: left;
-}
-
-/* One line, then an ellipsis */
-.journal-stack .journal-title {
-  display: block;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.journal-stack .journal-menu-area {
-  top: 50%;
-  transform: translateY(-50%);
-  right: 10px;
-}
-
-.journal-stack .journal-menu {
-  z-index: 1;
-}
-
-/* New journal form */
 .new-journal-form {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
 .new-journal-form input,
-.library-search {
+.shelf-search {
   padding: 8px 12px;
   border: 1px solid #d6cfc2;
   border-radius: 999px;
@@ -303,198 +411,13 @@
 }
 
 .desk-action:focus-visible,
-.library-item-actions button:focus-visible,
-.library-close:focus-visible,
 .new-journal-form input:focus-visible,
-.library-search:focus-visible {
+.shelf-search:focus-visible {
   outline: 3px solid #3a6fd8;
   outline-offset: 2px;
 }
 
-/* Journal Library drawer */
-.library-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20000;
-  background-color: rgba(40, 32, 24, 0.18);
-  animation: library-fade-in 0.2s ease;
-}
-
-.journal-library {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20001;
-  width: min(380px, 100%);
-  box-sizing: border-box;
-  padding: calc(20px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  background-color: #f7f3ec;
-  box-shadow: -12px 0 32px rgba(30, 22, 14, 0.14);
-  animation: library-slide-in 0.25s ease;
-}
-
-.library-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.library-header h2 {
-  margin: 0;
-  color: #3a332b;
-  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-  font-size: 20px;
-  font-weight: normal;
-}
-
-.library-close {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: #4a4238;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.library-close:hover {
-  background-color: #ece6dc;
-}
-
-.library-empty {
-  margin: 8px 0;
-  color: #7a7064;
-  font-size: 14px;
-}
-
-.library-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.library-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 10px;
-  background-color: #fffdf9;
-  box-shadow: 0 0 0 1px rgba(70, 55, 35, 0.06);
-}
-
-/* A tiny journal spine in the list's cover color */
-.library-swatch {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 38px;
-  border-radius: 2px 4px 4px 2px;
-  background-color: var(--cover);
-  box-shadow: inset 3px 0 0 rgba(0, 0, 0, 0.16);
-}
-
-.library-item-text {
-  flex: 1 1 auto;
-  min-width: 0; /* allow the name to truncate */
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.library-item-name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: #3a332b;
-  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-  font-size: 15px;
-}
-
-.library-item-status {
-  color: #8a8073;
-  font-size: 12px;
-}
-
-.library-item-actions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 6px;
-}
-
-.library-item-actions button {
-  padding: 6px 10px;
-  font-size: 13px;
-}
-
-.library-item-actions .library-place {
-  border-color: #b9ae9c;
-  background-color: #efe8dc;
-}
-
-@keyframes library-slide-in {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-@keyframes library-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .journal-library,
-  .library-backdrop {
-    animation: none;
-  }
-}
-
-/* Very narrow screens: stack the library actions under the name */
-@media (max-width: 400px) {
-  .library-item {
-    flex-wrap: wrap;
-  }
-
-  .library-item-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-}
-
-/* Destructive actions: kept visually apart from Open / Put away */
-.journal-menu .journal-menu-delete {
-  margin-top: 4px;
-  padding-top: 9px;
-  border-top: 1px solid #eee7dc;
-  border-radius: 0 0 6px 6px;
-  color: #a33a2c;
-}
-
-.library-item-actions .library-delete {
-  border-color: transparent;
-  background: none;
-  color: #a33a2c;
-}
-
-.library-item-actions .library-delete:hover {
-  background-color: #f8e9e5;
-}
-
 /* Reserved-name message under the New journal field */
-.new-journal-form {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .new-journal-error {
   flex-basis: 100%;
   margin: 0;
@@ -503,13 +426,40 @@
   text-align: right;
 }
 
-/* Delete confirmation dialog (above the library drawer) */
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 640px) {
+  /* One shelf that scrolls sideways, instead of many stacked shelves */
+  .shelf-books {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .shelf-books::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shelf-slot {
+    flex: 0 0 auto;
+  }
+
+  /* Smaller covers so three fit side by side */
+  .journal-label {
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+}
+
+/* ---------- Delete confirmation dialog ---------- */
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;
   z-index: 30000;
   background-color: rgba(40, 32, 24, 0.32);
-  animation: library-fade-in 0.15s ease;
+  animation: dialog-fade-in 0.15s ease;
 }
 
 .confirm-dialog {
@@ -567,7 +517,19 @@
   background-color: #8c2f23;
 }
 
-.desk-action:disabled {
-  cursor: default;
-  opacity: 0.6;
+@keyframes dialog-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop,
+  .journal.is-arriving {
+    animation: none;
+  }
+
+  .spine,
+  .journal-cover {
+    transition: none;
+  }
 }

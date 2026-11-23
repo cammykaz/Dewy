@@ -6,7 +6,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-const GENERIC_ERROR = "Couldn't delete this journal. It's still in your library — check your connection and try again.";
+const GENERIC_ERROR = "Couldn't delete this journal. It's still here — check your connection and try again.";
 
 function DeleteJournalDialog({ journalName, onCancel, onConfirm }) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -26,7 +26,7 @@ function DeleteJournalDialog({ journalName, onCancel, onConfirm }) {
     if (!isDeleting) onCancel();
   };
 
-  // Escape cancels. Capture phase + stopPropagation so it doesn't also close the library behind it.
+  // Escape cancels. Capture phase + stopPropagation so nothing behind the dialog also reacts to it.
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key !== 'Escape') return;
