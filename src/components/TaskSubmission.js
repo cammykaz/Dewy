@@ -2,6 +2,7 @@
 
 import React, { useRef } from 'react';
 import { useTasks } from '../context/TasksContext';
+import './TaskSubmission.css';
 
 // Functional component for task submission, receiving `addTask` function via props
 function TaskSubmission() {
@@ -37,21 +38,21 @@ function TaskSubmission() {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <input type="text" name="taskName" placeholder="Task Name" required />
-      <select name="taskImpact">
+    <form className="task-add-form" onSubmit={handleSubmit}>
+      <input type="text" name="taskName" placeholder="Add a task…" aria-label="New task name" autoComplete="off" required />
+      <select name="taskImpact" aria-label="Impact">
         <option value="Monumental">Monumental</option>
         <option value="Substantial">Substantial</option>
         <option value="Medium">Medium</option>
         <option value="Minimal">Minimal</option>
       </select>
-      <select name="taskTime">
+      <select name="taskTime" aria-label="Time">
         <option value="10 Minutes">10 Minutes</option>
         <option value="30 Minutes">30 Minutes</option>
         <option value="1 Hour">1 Hour</option>
         <option value="2 Hours">2 Hours</option>
       </select>
-      <button type="submit">Add Task</button>
+      <button type="submit">Add</button>
     </form>
   );
 }

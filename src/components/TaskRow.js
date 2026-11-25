@@ -99,7 +99,7 @@ function TaskRow({ id, name, impact, time, priority, onDelete, onFieldUpdate, is
       )}
       {/* Impact Dropdown */}
       <div className="task-cell impact-cell">
-        <select name="impact" value={impact} onChange={handleFieldChange}>
+        <select name="impact" aria-label={`Impact: ${name}`} value={impact} onChange={handleFieldChange}>
           <option value="Monumental">Monumental</option>
           <option value="Substantial">Substantial</option>
           <option value="Medium">Medium</option>
@@ -108,7 +108,7 @@ function TaskRow({ id, name, impact, time, priority, onDelete, onFieldUpdate, is
       </div>
       {/* Time Dropdown */}
       <div className="task-cell time-cell">
-        <select name="time" value={time} onChange={handleFieldChange}>
+        <select name="time" aria-label={`Time: ${name}`} value={time} onChange={handleFieldChange}>
           <option value="10 Minutes">10 Minutes</option>
           <option value="30 Minutes">30 Minutes</option>
           <option value="1 Hour">1 Hour</option>

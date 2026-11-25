@@ -390,6 +390,159 @@
   color: #a33a2c;
 }
 
+/* ---------- A journal open as a lightbox ---------- */
+
+/* The open journal floats above the room. The desk and shelf stay visible behind a frosted,
+   faintly cover-tinted scrim around its edges; clicking those edges lays the journal down. */
+.journal-overlay {
+  --gutter: clamp(10px, 2.2vw, 24px); /* a strip of blurred desk to click, no more */
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--gutter) + env(safe-area-inset-top, 0px)) var(--gutter)
+    calc(var(--gutter) + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+.journal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(52, 42, 32, 0.3); /* for browsers without color-mix() */
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--cover) 22%, transparent), transparent 70%),
+    rgba(52, 42, 32, 0.28);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
+  cursor: pointer;
+  animation: scrim-in 0.25s ease-out;
+}
+
+/* The journal itself is solid paper: a settled place to focus, with the blurred room only around it */
+.open-journal {
+  --paper: #fbf8f2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(1040px, 100%);
+  height: 100%;
+  border-radius: 22px;
+  background-color: var(--paper);
+  box-shadow:
+    0 0 0 1px rgba(60, 48, 36, 0.08),
+    0 30px 80px -20px rgba(30, 22, 14, 0.45),
+    0 10px 24px rgba(30, 22, 14, 0.12);
+  overflow: hidden;
+  animation: journal-open 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* The cover's colour as a ribbon along the binding edge */
+.open-journal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  background-color: var(--cover);
+  opacity: 0.85;
+}
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes journal-open {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.open-journal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px clamp(16px, 3vw, 32px) 10px;
+  border-bottom: 1px solid rgba(60, 48, 36, 0.1);
+}
+
+.open-journal-title {
+  margin: 0;
+  min-width: 0;
+  color: #2f2922;
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: clamp(19px, 2.2vw, 23px);
+  font-weight: normal;
+  overflow-wrap: break-word;
+}
+
+.open-journal-title:focus {
+  outline: none;
+}
+
+.open-journal-close {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1px solid #d6cfc2;
+  border-radius: 999px;
+  background-color: #faf7f1;
+  color: #3a332b;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.open-journal-close:hover {
+  background-color: #f2ede4;
+}
+
+.open-journal-close:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 2px;
+}
+
+/* The pages scroll inside the journal */
+.open-journal-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0 clamp(16px, 3vw, 32px) 24px;
+}
+
+/* The add-task line and column labels stay pinned at the top while the tasks scroll beneath.
+   Same paper as the page, so it reads as part of it rather than a separate strip. */
+.task-manager-pinned {
+  position: sticky;
+  top: 0;
+  z-index: 2; /* above the strike-through lines */
+  background-color: var(--paper);
+}
+
+/* Browsers without backdrop blur get a darker scrim, so the journal still stands out */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .journal-scrim { background-color: rgba(52, 42, 32, 0.5); }
+}
+
+@media (max-width: 640px) {
+  .journal-overlay {
+    --gutter: 8px;
+  }
+
+  .open-journal {
+    border-radius: 16px;
+  }
+}
+
 /* ---------- New journal form ---------- */
 
 .new-journal-form {
@@ -524,7 +677,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dialog-backdrop,
-  .journal.is-arriving {
+  .journal.is-arriving,
+  .journal-scrim,
+  .open-journal {
     animation: none;
   }
 

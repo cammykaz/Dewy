@@ -1,0 +1,73 @@
+/* TaskSubmission.css */
+
+/* One slim line for adding a task: name, impact, time, Add. The dropdowns use the same column
+   widths as the task rows (TaskRow.css), so they line up with the table below. */
+.task-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+.task-add-form input[name="taskName"] {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 9px 14px;
+  border: 1px solid rgba(60, 48, 36, 0.16);
+  border-radius: 10px;
+  background-color: rgba(255, 255, 255, 0.85);
+  color: #2f2922;
+  font: inherit;
+  font-size: 16px;
+}
+
+.task-add-form select {
+  min-width: 0;
+  padding: 8px 4px;
+  border: none;
+  border-radius: 8px;
+  background-color: transparent;
+  color: #5c5348;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.task-add-form select:hover {
+  background-color: rgba(60, 48, 36, 0.06);
+}
+
+.task-add-form select[name="taskImpact"] { flex: 0 0 var(--impact-width, 108px); }
+.task-add-form select[name="taskTime"] { flex: 0 0 var(--time-width, 100px); }
+
+/* Add sits over the priority and delete columns (28px + 6px gap + 30px) */
+.task-add-form button {
+  flex: 0 0 64px;
+  padding: 9px 0;
+  border: none;
+  border-radius: 10px;
+  background-color: #3a332b;
+  color: #fffdf9;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.task-add-form button:hover {
+  background-color: #2a241e;
+}
+
+.task-add-form input:focus-visible,
+.task-add-form select:focus-visible,
+.task-add-form button:focus-visible {
+  outline: 3px solid #3a6fd8;
+  outline-offset: 1px;
+}
+
+/* Narrow screens: the name gets its own line, with impact, time, and Add beneath it */
+@media (max-width: 560px) {
+  .task-add-form input[name="taskName"] {
+    flex-basis: 100%;
+  }
+}

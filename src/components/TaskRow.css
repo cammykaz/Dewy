@@ -1,59 +1,66 @@
 /* TaskRow.css */
 
-/* Flexbox container for each task row */
+/* One task per line: checkbox, name (takes the spare width), impact, time, priority, delete.
+   Rows are separated by a hairline rather than boxed cells, so many fit on screen. */
 .task-row {
   display: flex;
-  gap: 8px; /* Controls the space between each cell */
-  align-items: stretch; /* Vertically center all items in the row */
-  position: relative; /* Allows for positioning the strike-through line */
-  padding: 0;
+  align-items: center;
+  gap: 6px;
+  position: relative; /* for the strike-through line */
+  min-height: 42px;
+  padding: 3px 0;
   margin: 0;
- }
-
-.task-row:first-child {
-  padding-top: 0; /* Remove top padding for the first row */
+  border-bottom: 1px solid rgba(60, 48, 36, 0.1);
+  color: #2f2922;
 }
 
-/* Apply the strike-through line when the task is done */
+/* A finished task is struck through, right across the row */
 .task-row.done::after {
   content: '';
   position: absolute;
-  top: 50%; /* Center the line vertically within the row */
-  left: 0; /* Start at the left edge */
-  right: 0; /* Span across the entire row */
+  top: 50%;
+  left: 0;
+  right: 0;
   height: 2px;
-  background-color: black;
+  background-color: #2f2922;
   z-index: 1;
+  pointer-events: none; /* the row's controls stay usable underneath */
 }
-
-/* Styling for individual task elements */
 
 /* checkbox */
-.checkbox-cell { /* Controls the layout and positioning of the container that holds the checkbox. */
-  flex: 0 0 64px; /* Fixed width, no grow or shrink */
+.checkbox-cell {
+  flex: 0 0 32px;
   display: flex;
-  align-items: center; /* Center vertically */
-  justify-content: center; /* Center horizontally */
+  align-items: center;
+  justify-content: center;
 }
 
+/* As big as the checkbox column allows (32px wide; rows are 36px tall inside their padding) */
 .checkbox-cell input[type="checkbox"] {
-  width: 100%;
-  height: 100%;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  accent-color: #3a6fd8;
+  cursor: pointer;
 }
 
-/* Base class for all task cells (name, impact, time) */
+/* Base class for the name, impact, and time cells */
 .task-cell {
-  padding: 0 8px;
   display: flex;
-  align-items: center; /* Vertically center content */
-  border: 1px solid #ccc;
-  min-height: 50px; /* Ensures a consistent row height */
+  align-items: center;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 6px;
+  box-sizing: border-box;
 }
 
-/* task name */
+/* task name: takes all the spare width, so names rarely wrap */
 .name-cell {
-  flex: 2 0 25%; /* High grow factor, lower shrink */
-  min-width: 150px; /* Minimum size to prevent it from becoming too small */
+  flex: 1 1 0;
+  min-width: 120px;
+  font-size: 16px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 /* Clickable task name (display mode) */
@@ -62,7 +69,7 @@
 }
 
 .name-cell.editable:hover {
-  background-color: #f5f5f5;
+  background-color: rgba(60, 48, 36, 0.06);
 }
 
 .name-cell.editable:focus-visible,
@@ -74,48 +81,102 @@
 /* Task name text field (edit mode) */
 .name-input {
   width: 100%;
-  height: 100%;
   border: none;
   outline: none; /* Focus is shown on the cell via :focus-within */
   background-color: transparent;
+  color: inherit;
   font: inherit;
-  font-size: 16px;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* Prevent the impact and time cells from shrinking too small */
-.impact-cell, .time-cell {
-  flex: 1 1 100px; /* Standard grow and shrink, with a reasonable starting width */
-  min-width: 80px; /* Minimum width to ensure readability */
+/* Impact and time: fixed widths, so they line up under the column labels (TableView.css) */
+.impact-cell,
+.time-cell {
+  min-width: 0; /* hold the column width even if the dropdown's text is wider */
+  padding: 0;
 }
 
-/* Style the select dropdowns */
+.impact-cell { flex: 0 0 var(--impact-width, 108px); }
+.time-cell { flex: 0 0 var(--time-width, 100px); }
+
 .task-cell select {
   width: 100%;
-  height: 100%;
+  padding: 6px 4px;
   border: none;
-  background-color: white;
-  font-size: 16px; 
-  box-sizing: border-box; /* Include padding and border in the element's total width and height */
+  border-radius: 6px;
+  background-color: transparent;
+  color: #5c5348;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
 }
 
-/* Flex item: priority cell */
+.task-cell select:hover {
+  background-color: rgba(60, 48, 36, 0.06);
+}
+
+.task-cell select:focus-visible {
+  outline: 2px solid #4a90e2;
+  outline-offset: -2px;
+}
+
+/* Priority: a small letter badge */
 .priority-cell {
-  flex: 0 1 50px; 
-  justify-content: center; /* Horizontally center text */
-  display: flex;
-  min-width: 30px; /* Prevent it from shrinking too small */
-  max-width: 100px; /* Cap the width at 100px for larger viewports */
-}
-
-/* Flex item: delete button */
-.delete-btn {
-  flex: 0 0 40px; 
+  flex: 0 0 28px;
   display: flex;
   justify-content: center;
   align-items: center;
+  height: 24px;
+  border-radius: 6px;
+  background-color: rgba(60, 48, 36, 0.07);
+  color: #4a4238;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Delete: quiet until hovered */
+.delete-btn {
+  flex: 0 0 30px;
+  height: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #8a8073;
   cursor: pointer;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+}
+
+.delete-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.delete-btn:hover {
+  background-color: rgba(163, 58, 44, 0.1);
+  color: #a33a2c;
+}
+
+.delete-btn:focus-visible {
+  outline: 2px solid #4a90e2;
+  outline-offset: 0;
+}
+
+/* Narrow screens: impact and time tuck under the name */
+@media (max-width: 560px) {
+  .task-row {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .name-cell {
+    flex-basis: calc(100% - 38px - 36px);
+  }
+
+  .impact-cell {
+    margin-left: 32px;
+  }
 }

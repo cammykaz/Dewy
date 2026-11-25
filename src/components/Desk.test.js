@@ -5,6 +5,7 @@ import { SHELF_SEARCH_THRESHOLD } from './Bookshelf';
 import { useTasks } from '../context/TasksContext';
 
 jest.mock('../context/TasksContext', () => ({ useTasks: jest.fn() }));
+jest.mock('./TaskManager', () => () => <div>Task manager</div>);
 
 const timestamp = (ms) => ({ toMillis: () => ms });
 
@@ -33,21 +34,30 @@ function FakeTasksProvider({ initialLists, defaultTaskListId, spies, children })
   return <FakeTasks.Provider value={value}>{children}</FakeTasks.Provider>;
 }
 
-function DeskThatOpens({ onOpenJournal }) {
+// Opens and closes journals the way App does (App keeps which journal is open)
+function DeskThatOpens({ onOpenJournal, onCloseJournal }) {
   const { markTaskListPickedUp } = useTasks();
-  return <Desk onOpenJournal={(id) => { onOpenJournal(id); markTaskListPickedUp(id); }} />;
+  const [openId, setOpenId] = useState(null);
+  return (
+    <Desk
+      openJournalId={openId}
+      onOpenJournal={(id) => { onOpenJournal(id); markTaskListPickedUp(id); setOpenId(id); }}
+      onCloseJournal={() => { onCloseJournal(); setOpenId(null); }}
+    />
+  );
 }
 
 const renderDesk = (taskLists, { defaultTaskListId = 'default-id' } = {}) => {
   const spies = { createTaskList: jest.fn(), takeDownTaskList: jest.fn(), deleteTaskList: jest.fn(async () => {}) };
   useTasks.mockImplementation(() => useContext(FakeTasks));
   const onOpenJournal = jest.fn();
+  const onCloseJournal = jest.fn();
   render(
     <FakeTasksProvider initialLists={taskLists} defaultTaskListId={defaultTaskListId} spies={spies}>
-      <DeskThatOpens onOpenJournal={onOpenJournal} />
+      <DeskThatOpens onOpenJournal={onOpenJournal} onCloseJournal={onCloseJournal} />
     </FakeTasksProvider>
   );
-  return { ...spies, onOpenJournal };
+  return { ...spies, onOpenJournal, onCloseJournal };
 };
 
 const deskNames = () =>
@@ -57,6 +67,7 @@ const shelfNames = () =>
 const shelf = () => screen.getByRole('region', { name: 'Bookshelf' });
 const spine = (name) => within(shelf()).getByRole('button', { name: `Take ${name} down to the desk` });
 const cover = (name) => within(document.querySelector('.desk')).getByRole('button', { name: `Open ${name}` });
+const openJournal = () => screen.queryByRole('dialog');
 
 // Six lists, most recently used first: F (opened recently), E, D, C, B, A
 const sixLists = [
@@ -111,7 +122,9 @@ describe('desk and shelf', () => {
     const { onOpenJournal } = renderDesk(sixLists);
     fireEvent.click(cover('D'));
     expect(onOpenJournal).toHaveBeenCalledWith('d');
+    expect(openJournal()).toHaveAccessibleName('D');
     expect(deskNames()).toEqual(['D', 'F', 'E']);
+    expect(shelfNames()).toEqual(['C', 'B', 'A']);
   });
 
   test('with only a few journals the shelf is empty and says so', () => {
@@ -142,6 +155,76 @@ describe('desk and shelf', () => {
     await act(async () => {});
     expect(deskNames()).toEqual(['F', 'D', 'C']);
     expect(shelfNames()).toEqual(['B', 'A']);
+  });
+});
+
+describe('a journal open as a lightbox', () => {
+  test('shows its tasks under its title, over the desk and shelf, which stay in view but out of use', () => {
+    renderDesk(sixLists);
+    expect(openJournal()).not.toBeInTheDocument();
+    fireEvent.click(cover('E'));
+
+    const journal = openJournal();
+    expect(journal).toHaveAttribute('aria-modal', 'true');
+    expect(within(journal).getByRole('heading', { name: 'E' })).toHaveFocus();
+    expect(within(journal).getByText('Task manager')).toBeInTheDocument();
+    expect(deskNames()).toEqual(['E', 'F', 'D']);
+    expect(shelfNames()).toEqual(['C', 'B', 'A']);
+    expect(document.querySelector('.desk-room')).toHaveAttribute('inert');
+    expect(document.body.style.overflow).toBe('hidden');
+  });
+
+  test('Close lays it back on the desk, returns focus to its cover, and frees the room', () => {
+    const { onCloseJournal } = renderDesk(sixLists);
+    fireEvent.click(cover('E'));
+    fireEvent.click(screen.getByRole('button', { name: 'Close E' }));
+    expect(onCloseJournal).toHaveBeenCalledTimes(1);
+    expect(openJournal()).not.toBeInTheDocument();
+    expect(cover('E')).toHaveFocus();
+    expect(document.querySelector('.desk-room')).not.toHaveAttribute('inert');
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  test('clicking the blurred desk around the journal lays it down; clicking inside does not', () => {
+    const { onCloseJournal } = renderDesk(sixLists);
+    fireEvent.click(cover('E'));
+    fireEvent.click(within(openJournal()).getByText('Task manager'));
+    expect(onCloseJournal).not.toHaveBeenCalled();
+
+    fireEvent.click(document.querySelector('.journal-scrim'));
+    expect(onCloseJournal).toHaveBeenCalledTimes(1);
+    expect(openJournal()).not.toBeInTheDocument();
+  });
+
+  test('Escape closes it, but not while typing or in a dropdown', () => {
+    const { onCloseJournal } = renderDesk(sixLists);
+    fireEvent.click(cover('E'));
+    const input = document.createElement('input');
+    const select = document.createElement('select');
+    openJournal().append(input, select);
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    fireEvent.keyDown(select, { key: 'Escape' });
+    expect(onCloseJournal).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(openJournal(), { key: 'Escape' });
+    expect(onCloseJournal).toHaveBeenCalledTimes(1);
+    expect(openJournal()).not.toBeInTheDocument();
+  });
+
+  test('Tab stays within the journal', () => {
+    renderDesk(sixLists);
+    fireEvent.click(cover('E'));
+    const close = screen.getByRole('button', { name: 'Close E' });
+    const extra = document.createElement('button');
+    openJournal().querySelector('.open-journal-page').append(extra);
+
+    extra.focus();
+    fireEvent.keyDown(extra, { key: 'Tab' });
+    expect(close).toHaveFocus();
+
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(extra).toHaveFocus();
   });
 });
 

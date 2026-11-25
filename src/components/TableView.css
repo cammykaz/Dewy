@@ -5,5 +5,42 @@
 .task-list {
   display: flex;
   flex-direction: column; /* Stack tasks vertically */
-  gap: 8px; /* Spacing between rows */
+  gap: 0; /* rows are separated by hairlines */
+}
+
+/* Column labels. Widths match the cells of a task row (TaskRow.css) and the add-task line
+   (TaskSubmission.css). Every column is pinned to its width (min-width: 0), so a long label can't
+   widen its column and push the others out of line. */
+.task-list-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px 0 6px;
+  border-bottom: 1px solid rgba(60, 48, 36, 0.18);
+  color: #8a8073;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.task-list-header > span {
+  min-width: 0;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.header-check { flex: 0 0 32px; }
+.header-name { flex: 1 1 0; padding-left: 8px; } /* over the task text */
+.header-impact { flex: 0 0 var(--impact-width, 108px); padding-left: 8px; } /* over the dropdown text */
+.header-time { flex: 0 0 var(--time-width, 100px); padding-left: 8px; }
+/* Starts just before the priority badge and runs on over the delete column, which has no label */
+.header-priority { flex: 0 0 28px; overflow: visible; position: relative; left: -12px; }
+.header-delete { flex: 0 0 30px; }
+
+/* On narrow screens impact and time wrap under the name, so the columns no longer line up */
+@media (max-width: 560px) {
+  .task-list-header {
+    display: none;
+  }
 }
